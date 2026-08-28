@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import requests
 from flask import Flask
 from threading import Thread
@@ -28,8 +29,15 @@ def keep_alive():
     server_thread.daemon = True
     server_thread.start()
 
+def extract_url(text):
+    # استخراج رابط ميداسباي بدقة من وسط أي رسالة نصية طويلة
+    urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', text)
+    for url in urls:
+        if 'midasbuy.com' in url:
+            return url.strip()
+    return None
+
 def get_fresh_session():
-    # إنشاء جلسة جديدة وجلب كوكيز حقيقية ومحدثة من موقع ميداسباي مباشرة
     session = requests.Session()
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -38,25 +46,31 @@ def get_fresh_session():
         'Referer': 'https://www.midasbuy.com/'
     }
     try:
-        # زيارة الصفحة الرئيسية لجلب الكوكيز الحقيقية وتثبيتها في الجلسة
         session.get('https://www.midasbuy.com/midasbuy/ot/ug/buy/pubgm', headers=headers, timeout=5)
     except:
         pass
     return session
 
-def process_single_request(session, short_link_url, headers):
+def process_single_request(session, url, headers):
     try:
-        response = session.post(short_link_url, headers=headers, json={}, timeout=2)
+        # تجربة POST أولاً، وإذا لم ينجح يتم تجربته كـ GET
+        response = session.post(url, headers=headers, json={}, timeout=2)
+        if response.status_code != 200:
+            response = session.get(url, headers=headers, timeout=2)
+            
         if response.status_code == 200:
             return response.json()
     except:
-        pass
+        try:
+            response = session.get(url, headers=headers, timeout=2)
+            if response.status_code == 200:
+                return response.json()
+        except:
+            pass
     return None
 
 def send_3x_help(short_link_url):
     start_time = time.time()
-    
-    # الحصول على جلسة مدعومة بكوكيز حقيقية ومحدثة
     session = get_fresh_session()
     
     headers = {
@@ -70,24 +84,23 @@ def send_3x_help(short_link_url):
     }
 
     try:
-        # الطلب الأول لجلب تفاصيل الحساب الحقيقية بدقة تامة
+        # فحص الرابط الأول (سواء POST أو GET)
         first_res = session.post(short_link_url, headers=headers, json={}, timeout=4)
         if first_res.status_code != 200:
-            return False, "⚠️ عذراً، الرابط غير صالح أو منتهي!"
+            first_res = session.get(short_link_url, headers=headers, timeout=4)
+            
+        if first_res.status_code != 200:
+            return False, "⚠️ عذراً، الرابط غير صالح أو منتهي الصلاحية!"
         
         try:
             data = first_res.json()
         except:
-            return False, "⚠️ عذراً، استجابة الموقع غير صالحة."
+            return False, "⚠️ عذراً، استجابة موقع ميداسباي غير صالحة."
 
-        # فحص ما إذا كان الرابط مكتمل مسبقاً (خلصان 30/30)
         res_text_lower = first_res.text.lower()
-        ret_code = data.get('ret', data.get('code', 0))
-
         if 'limit' in res_text_lower or 'complete' in res_text_lower or 'ended' in res_text_lower or 'max' in res_text_lower or 'finish' in res_text_lower:
             return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
 
-        # استخراج اسم صاحب الحساب والـ ID ورصيد الـ UC بدقة من الـ JSON
         account_info = data.get('data', {})
         if not isinstance(account_info, dict):
             account_info = data
@@ -127,7 +140,7 @@ def send_3x_help(short_link_url):
 
     success_count = 1
 
-    # إطلاق باقي اللفات بالتوازي وبسرعة فائقة جداً (في أقل من ثانيتين)
+    # إطلاق الـ 29 طلب الباقيين بالتوازي الفائق
     with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(process_single_request, session, short_link_url, headers) for _ in range(29)]
         for future in futures:
@@ -139,7 +152,6 @@ def send_3x_help(short_link_url):
 
     elapsed_time = round(time.time() - start_time, 1)
 
-    # شكل الرسالة النهائي المطلوب بالظبط
     result_msg = (
         f"تم {success_count}/30\n"
         f"• {uc_balance} . 💰\n"
@@ -165,16 +177,10 @@ def get_user_data(user_id, username=''):
 
 def get_main_keyboard(lang='ar'):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    if lang == 'ar':
-        btn1 = types.KeyboardButton('🛒 شراء Links')
-        btn2 = types.KeyboardButton('💳 رصيدي')
-        btn3 = types.KeyboardButton('🔗 دعوة صديق')
-        btn4 = types.KeyboardButton('📞 تواصل مع الأدمن')
-    else:
-        btn1 = types.KeyboardButton('🛒 Buy Links')
-        btn2 = types.KeyboardButton('💳 My Balance')
-        btn3 = types.KeyboardButton('🔗 Invite Friend')
-        btn4 = types.KeyboardButton('📞 Contact Admin')
+    btn1 = types.KeyboardButton('🛒 شراء Links')
+    btn2 = types.KeyboardButton('💳 رصيدي')
+    btn3 = types.KeyboardButton('🔗 دعوة صديق')
+    btn4 = types.KeyboardButton('📞 تواصل مع الأدمن')
     markup.add(btn1, btn2, btn3, btn4)
     return markup
 
@@ -197,7 +203,6 @@ def send_welcome(message):
             pass
 
     udata = get_user_data(user_id, username)
-    lang = udata['lang']
     user_name = message.from_user.first_name if message.from_user.first_name else "صديقي"
     
     if is_admin(username):
@@ -205,24 +210,14 @@ def send_welcome(message):
     else:
         balance_display = f"💳 رصيدك الحالي: {udata['balance']} Link (تم إعطاء 1 لينك هدية ترحيبية لأول استخدام 🎁)"
 
-    if lang == 'ar':
-        welcome_text = (
-            f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
-            f"{balance_display}\n"
-            "🔗 1 Link = 30 Invite\n"
-            "🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها + لينك هدية عند دعوة صديق!\n\n"
-            "اختر الخدمة المطلوبة من الأزرار بالأسفل 👇"
-        )
-    else:
-        welcome_text = (
-            f"Welcome <b>{user_name}</b> to <b>STARK</b> Bot 👑\n\n"
-            f"{balance_display}\n"
-            "🔗 1 Link = 30 Invite\n"
-            "🎁 Bonus link for every 5 bought + bonus for inviting friends!\n\n"
-            "Choose a service below 👇"
-        )
-        
-    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard(lang), parse_mode="HTML")
+    welcome_text = (
+        f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
+        f"{balance_display}\n"
+        "🔗 1 Link = 30 Invite\n"
+        "🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها + لينك هدية عند دعوة صديق!\n\n"
+        "اختر الخدمة المطلوبة من الأزرار بالأسفل 👇"
+    )
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard('ar'), parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline(call):
@@ -274,7 +269,6 @@ def handle_messages(message):
     user_name = message.from_user.first_name if message.from_user.first_name else "صديقي"
     
     udata = get_user_data(user_id, username)
-    lang = udata['lang']
 
     if text in ['🛒 شراء Links', '🛒 Buy Links']:
         buy_markup = types.InlineKeyboardMarkup(row_width=2)
@@ -327,7 +321,9 @@ def handle_messages(message):
         )
         return
 
-    if 'midasbuy.com' in text or 'http' in text:
+    # استخراج الرابط تلقائياً من أي نص يبعته المستخدم
+    extracted_url = extract_url(text)
+    if extracted_url:
         if not is_admin(username):
             if udata['balance'] <= 0:
                 bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
@@ -335,7 +331,7 @@ def handle_messages(message):
 
         msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ الفوري...")
         
-        success, res = send_3x_help(text.strip())
+        success, res = send_3x_help(extracted_url)
         
         if not success:
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
