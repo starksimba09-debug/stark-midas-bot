@@ -1,41 +1,30 @@
 import os
-import time
-import requests
-from flask import Flask
 from threading import Thread
+import telebot
+from flask import Flask
 
-# إعداد سيرفر الويب الخفي لضمان بقاء البوت شغال 24/7 على Render
-app = Flask('')
+TOKEN = os.environ.get("API_TOKEN")
+bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
-@app.route('/')
+
+@app.route("/")
 def home():
-    return "Stark Midas Bot is active and running 24/7!"
+  return "Stark Midas Bot is active and running 24/7!"
 
-def run():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
 
-def keep_alive():
-    server_thread = Thread(target=run)
-    server_thread.daemon = True
-    server_thread.start()
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+  bot.reply_to(message, "أهلاً بيك يا بطل، البوت شغال وزي الفل!")
 
-# دالة التشغيل الرئيسية للبوت
-def main():
-    print("Stark Midas Bot Service Started Successfully.")
-    
-    # حلقة تكرارية لضمان استمرار عمل الخدمة وتجنب التوقف
-    while True:
-        try:
-            # مكان مهام البوت الأساسية أو الأوامر مستقبلاً
-            pass
-        except Exception as e:
-            print(f"Error occurred: {e}")
-            
-        time.sleep(30)
+
+def run_flask():
+  port = int(os.environ.get("PORT", 8080))
+  app.run(host="0.0.0.0", port=port)
+
 
 if __name__ == "__main__":
-    # تشغيل السيرفر الخفي أولاً
-    keep_alive()
-    # تشغيل مهام البوت
-    main()
+  t = Thread(target=run_flask)
+  t.start()
+  print("Stark Midas Bot Service Started Successfully.")
+  bot.infinity_polling()
