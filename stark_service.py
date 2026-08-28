@@ -4,8 +4,6 @@ import requests
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 import telebot
 from telebot import types
 
@@ -14,9 +12,6 @@ bot = telebot.TeleBot(TOKEN)
 
 ADMIN_USERNAMES = ["YAMAC_GAMING", "S1_MBA1", "SImba_5", "Vartolugaming"]
 users_db = {}
-
-cached_cookies = None
-last_cookie_time = 0
 
 app = Flask('')
 
@@ -33,35 +28,9 @@ def keep_alive():
     server_thread.daemon = True
     server_thread.start()
 
-def get_cached_cookies():
-    global cached_cookies, last_cookie_time
-    if cached_cookies and (time.time() - last_cookie_time < 600):
-        return cached_cookies
-
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    
-    driver = webdriver.Chrome(options=chrome_options)
-    try:
-        driver.get("https://www.midasbuy.com/midasbuy/ot/ug/buy/pubgm")
-        time.sleep(2)
-        selenium_cookies = driver.get_cookies()
-        cached_cookies = {cookie['name']: cookie['value'] for cookie in selenium_cookies}
-        last_cookie_time = time.time()
-        print("✅ تم تحديث كوكيز ميداسباي بنجاح!")
-        return cached_cookies
-    except Exception as e:
-        print(f"❌ خطأ في توليد الكوكيز: {e}")
-        return None
-    finally:
-        driver.quit()
-
 def process_single_request(session, short_link_url, headers):
     try:
-        response = session.post(short_link_url, headers=headers, json={}, timeout=4)
+        response = session.post(short_link_url, headers=headers, json={}, timeout=3)
         if response.status_code == 200:
             return response.json()
     except:
@@ -70,32 +39,26 @@ def process_single_request(session, short_link_url, headers):
 
 def send_3x_help(short_link_url):
     start_time = time.time()
-    cookies = get_cached_cookies()
-    if not cookies:
-        return False, "❌ فشل الاتصال بموقع ميداسباي، حاول مرة أخرى."
-
-    session = requests.Session()
-    session.cookies.update(cookies)
     
+    session = requests.Session()
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
     }
 
-    # الطلب الأول لجلب بيانات صاحب الرابط الحقيقية (الاسم، الـ ID، رصيد الـ UC)
+    # الطلب الأول لفحص الرابط وجلب بيانات الحساب فوراً بدون أي تأخير
     try:
-        first_res = session.post(short_link_url, headers=headers, json={}, timeout=5)
+        first_res = session.post(short_link_url, headers=headers, json={}, timeout=4)
         if first_res.status_code != 200:
             return False, "⚠️ عذراً، الرابط غير صالح أو منتهي!"
         
         data = first_res.json()
         
-        # استخراج بيانات الحساب بدقة من هيكل الاستجابة
+        # استخراج بيانات الحساب بدقة بجميع اللغات (عربي، صيني، إنجليزي)
         account_info = data.get('data', data)
-        # البحث عن اسم صاحب الحساب بأكثر من مفتاح محتمل في الاستجابة
         player_name = (
             account_info.get('roleName') or 
             account_info.get('nickname') or 
@@ -105,7 +68,6 @@ def send_3x_help(short_link_url):
             "لاعب PUBG"
         )
         
-        # البحث عن الـ ID الحقيقي
         player_id = (
             account_info.get('roleId') or 
             account_info.get('uid') or 
@@ -123,7 +85,7 @@ def send_3x_help(short_link_url):
             "---"
         )
         
-        # فحص إذا كان الرابط مكتمل أو خلصان من الأساس
+        # فحص إذا كان الرابط مكتمل مسبقاً (خلصان 30/30)
         res_text_lower = first_res.text.lower()
         ret_code = data.get('ret', data.get('code', -1))
         
@@ -132,12 +94,12 @@ def send_3x_help(short_link_url):
             
     except Exception as e:
         print(f"Error fetching player data: {e}")
-        return False, "❌ حدث خطأ أثناء قراءة تفاصيل الرابط أو أن الرابط منتهي."
+        return False, "❌ حدث خطأ أو أن الرابط منتهي الصلاحية."
 
     success_count = 1
 
-    # إطلاق باقي اللفات بالتوازي لسرعة فائقة
-    with ThreadPoolExecutor(max_workers=15) as executor:
+    # تنفيذ باقي اللفات بالتوازي بسرعة فائقة (بدون أي تعليق)
+    with ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(process_single_request, session, short_link_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
@@ -148,7 +110,7 @@ def send_3x_help(short_link_url):
 
     elapsed_time = round(time.time() - start_time, 1)
 
-    # تنسيق الرسالة النهائي المطلوب تماماً
+    # تنسيق الرسالة النهائي المطلوب بالضبط
     result_msg = (
         f"تم {success_count}/30\n"
         f"• {uc_balance} . 💰\n"
@@ -285,7 +247,6 @@ def handle_messages(message):
     udata = get_user_data(user_id, username)
     lang = udata['lang']
 
-    # زرار الشراء يظهر باقات مرتبة تحت الرسالة
     if text in ['🛒 شراء Links', '🛒 Buy Links']:
         buy_markup = types.InlineKeyboardMarkup(row_width=2)
         buy_markup.add(
@@ -337,23 +298,20 @@ def handle_messages(message):
         )
         return
 
-    # معالجة روابط ميداسباي مع حماية الرصيد وفحص الرابط الخلصان
     if 'midasbuy.com' in text or 'http' in text:
         if not is_admin(username):
             if udata['balance'] <= 0:
                 bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
                 return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الرابط وتنفيذ اللفات...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ الفوري...")
         
         success, res = send_3x_help(text.strip())
         
-        # إذا كان الرابط خلصان أو منتهي، لا يتم خصم أي رصيد من المستخدم
         if not success:
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد لأن الرابط منتهي أو خلصان!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
             return
 
-        # الخصم فقط في حال نجاح التنفيذ الفعلي
         if not is_admin(username):
             udata['balance'] -= 1
 
