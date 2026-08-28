@@ -71,9 +71,7 @@ def send_3x_help(short_link_url):
 
     success_count = 0
     failed_count = 0
-    remaining_slots = 30  # الافتراضي الحد الأقصى
 
-    # محاولة معرفة الحالة الأولى للرابط أو إرسال طلبات تدريجية لقياس الاستجابة
     for i in range(30):
         try:
             response = session.post(short_link_url, headers=headers, json={}, timeout=10)
@@ -81,10 +79,8 @@ def send_3x_help(short_link_url):
                 data = response.json()
                 ret_code = data.get('ret', data.get('code', -1))
                 
-                # لو الطلب نجح واتقبلت المساعدة
                 if ret_code == 0 or 'success' in response.text.lower():
                     success_count += 1
-                # لو السيرفر رد إن الرابط اكتمل بالكامل (خلصان)
                 elif 'limit' in response.text.lower() or 'complete' in response.text.lower() or ret_code == 1001 or ret_code == 2001:
                     if success_count == 0 and i == 0:
                         return True, "⚠️ عذراً، هذا الرابط **دعواته منتهية بالكامل (خلصان 30/30)** ولا يقبل أي لفات جديدة!"
@@ -131,7 +127,7 @@ def send_welcome(message):
     user_type = "👑 أدمن (رصيد مجاني غير محدود)" if is_admin(user.username) else "💳 الرصيد: Link 0"
     
     welcome_text = (
-        f"أهلاً بك يا <b>{user_name}</b> في بوت Ⓢ ➂ Ⓔ Ⓔ Ⓓ 👑\n\n"
+        f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
         "تم تفعيل حسابك بنجاح وأصبح جاهزًا للاستخدام.\n\n"
         f"{user_type}\n"
         "🎁 Free Link: غير متاحة\n"
@@ -146,9 +142,6 @@ def send_welcome(message):
 def handle_docs_photo(message):
     user = message.from_user
     user_name = user.first_name if user.first_name else "مستخدم"
-    username = f"@{user.username}" if user.username else "بدون يوزر"
-    chat_id = message.chat.id
-
     bot.reply_to(message, f"📸 تسلم يا <b>{user_name}</b>، تم استلام إثبات الدفع بنجاح.\n\n⏳ جارٍ مراجعة تفاصيل التحويل والتأكد من وصول الأموال لإضافة اللينكات لحسابك فوراً.", parse_mode="HTML")
 
 @bot.message_handler(func=lambda message: True)
@@ -210,14 +203,13 @@ def handle_messages(message):
         bot.send_message(chat_id, payment_info, parse_mode="Markdown")
 
     elif 'midasbuy.com' in text or 'short_link' in text:
-        # التحقق: لو مستخدم عادي ورصيده 0، يمنعه ويطلب منه الشراء (ماعدا الأدمن)
         if not is_admin(username):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (Link 0). يرجى شراء باقة من القائمة للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 يا {user_name}، Stark Bot يفحص الرابط ويحسب اللفات المتبقية لتنفيذها الآن...")
+        msg = bot.send_message(chat_id, f"🚀 يا {user_name}، STARK Bot بيفحص الرابط ويحسب اللفات المتبقية لتنفيذها الآن...")
         success, res = send_3x_help(text.strip())
-        bot.edit_message_text(f"⚡ **Stark Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
         
     else:
         bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه أوتوماتيك!")
