@@ -14,6 +14,10 @@ bot = telebot.TeleBot(TOKEN)
 ADMIN_USERNAMES = ["YAMAC_GAMING", "S1_MBA1", "SImba_5", "Vartolugaming"]
 users_db = {}
 
+# كاش عام لتخزين الكوكيز وتحديثها لتجنب بطء السيلينيوم المتكرر
+cached_cookies = None
+last_cookie_time = 0
+
 app = Flask('')
 
 @app.route('/')
@@ -29,7 +33,11 @@ def keep_alive():
     server_thread.daemon = True
     server_thread.start()
 
-def generate_fresh_cookies():
+def get_cached_cookies():
+    global cached_cookies, last_cookie_time
+    if cached_cookies and (time.time() - last_cookie_time < 600):
+        return cached_cookies
+
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -39,20 +47,22 @@ def generate_fresh_cookies():
     driver = webdriver.Chrome(options=chrome_options)
     try:
         driver.get("https://www.midasbuy.com/midasbuy/ot/ug/buy/pubgm")
-        time.sleep(3)
+        time.sleep(2)
         selenium_cookies = driver.get_cookies()
-        cookies_dict = {cookie['name']: cookie['value'] for cookie in selenium_cookies}
-        return cookies_dict
+        cached_cookies = {cookie['name']: cookie['value'] for cookie in selenium_cookies}
+        last_cookie_time = time.time()
+        print("✅ تم تحديث كوكيز ميداسباي بنجاح!")
+        return cached_cookies
     except Exception as e:
-        print(f"Error generating cookies: {e}")
+        print(f"❌ خطأ في توليد الكوكيز: {e}")
         return None
     finally:
         driver.quit()
 
 def send_3x_help(short_link_url):
-    cookies = generate_fresh_cookies()
+    cookies = get_cached_cookies()
     if not cookies:
-        return False, "❌ فشل توليد الكوكيز أوتوماتيك، حاول مرة أخرى."
+        return False, "❌ فشل الاتصال بموقع ميداسباي، حاول مرة أخرى."
 
     session = requests.Session()
     session.cookies.update(cookies)
@@ -71,6 +81,8 @@ def send_3x_help(short_link_url):
     for i in range(30):
         try:
             response = session.post(short_link_url, headers=headers, json={}, timeout=5)
+            print(f"Request {i+1}: Status {response.status_code} - Text: {response.text[:100]}")
+            
             if response.status_code == 200:
                 data = response.json()
                 ret_code = data.get('ret', data.get('code', -1))
@@ -86,14 +98,15 @@ def send_3x_help(short_link_url):
             else:
                 failed_count += 1
                 
-            time.sleep(0.3)
+            time.sleep(0.1)
         except Exception as e:
+            print(f"Error in request {i+1}: {e}")
             failed_count += 1
 
     if success_count == 0:
         return True, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان) أو غير صالح!"
 
-    result_msg = f"🎯 تم تنفيذ اللفات بنجاح! العدد الناجح: **{success_count} لفة** ⚡"
+    result_msg = f"🎯 تم تنفيذ اللفات بنجاح حقيقي!\n✅ عدد اللفات الناجحة: <b>{success_count} / 30</b> ⚡"
     return True, result_msg
 
 def is_admin(username):
@@ -136,7 +149,6 @@ def send_welcome(message):
         btn1 = types.InlineKeyboardButton('🛒 شراء Links', callback_data='buy_links')
         btn2 = types.InlineKeyboardButton('🔗 إرسال رابط (دعوة صديق)', callback_data='invite_friend')
         btn3 = types.InlineKeyboardButton('💳 رصيدي', callback_data='my_balance')
-        # زر تواصل مباشر يفتح قائمة الأدمنية فوراً بأزرار URL
         btn4 = types.InlineKeyboardButton('📞 تواصل مع الأدمن', callback_data='contact_admin')
         btn5 = types.InlineKeyboardButton('🌐 Change Language / English', callback_data='change_lang')
     else:
@@ -186,7 +198,6 @@ def handle_inline(call):
 
     if call.data == 'contact_admin':
         bot.answer_callback_query(call.id)
-        # إنشاء أزرار شفافة مباشرة تفتح حسابات الأدمن عند الضغط عليها
         admin_markup = types.InlineKeyboardMarkup(row_width=2)
         admin_markup.add(
             types.InlineKeyboardButton("👤 YAMAC_GAMING", url="https://t.me/YAMAC_GAMING"),
@@ -276,15 +287,24 @@ def handle_messages(message):
             if udata['balance'] <= 0:
                 bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
                 return
+
+        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص حالة الرابط وتنفيذ اللفات...")
+        
+        success, res = send_3x_help(text.strip())
+        
+        # حماية الرصيد: لو الرابط خلصان أو منتهي مش بيخصم رصيد
+        if "مكتمل بالفعل" in res or "منتهية بالكامل" in res or "غير صالح" in res or "فشل" in res:
+            bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}\n\n🛡️ <b>ملاحظة:</b> لم يتم خصم أي رصيد لأن الرابط غير صالح أو مكتمل!", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
+            return
+
+        if not is_admin(username):
             udata['balance'] -= 1
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الرابط وتنفيذ اللفات بسرعة...")
-        success, res = send_3x_help(text.strip())
-        bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}\n\n💳 تم خصم 1 Link بنجاح. رصيدك المتبقي: {udata['balance']} Link", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
         return
         
     else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، اضغط على الأزرار بالأعلى أو ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه في ثوانٍ!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه في ثوانٍ معدودة!")
 
 def run_telegram_bot():
     while True:
