@@ -61,7 +61,7 @@ def get_cached_cookies():
 
 def process_single_request(session, short_link_url, headers):
     try:
-        response = session.post(short_link_url, headers=headers, json={}, timeout=5)
+        response = session.post(short_link_url, headers=headers, json={}, timeout=4)
         if response.status_code == 200:
             return response.json()
     except:
@@ -69,9 +69,10 @@ def process_single_request(session, short_link_url, headers):
     return None
 
 def send_3x_help(short_link_url):
+    start_time = time.time()
     cookies = get_cached_cookies()
     if not cookies:
-        return False, "❌ فشل الاتصال بموقع ميداسباي، حاول مرة أخرى.", None
+        return False, "❌ فشل الاتصال بموقع ميداسباي، حاول مرة أخرى."
 
     session = requests.Session()
     session.cookies.update(cookies)
@@ -84,34 +85,59 @@ def send_3x_help(short_link_url):
         'X-Requested-With': 'XMLHttpRequest'
     }
 
-    # الطلب الأول لجلب بيانات صاحب الرابط الحقيقية (ID, Name, Invites, etc.)
+    # الطلب الأول لجلب بيانات صاحب الرابط الحقيقية (الاسم، الـ ID، رصيد الـ UC)
     try:
         first_res = session.post(short_link_url, headers=headers, json={}, timeout=5)
         if first_res.status_code != 200:
-            return True, "⚠️ عذراً، الرابط غير صالح أو منتهي!", None
+            return False, "⚠️ عذراً، الرابط غير صالح أو منتهي!"
         
         data = first_res.json()
+        
+        # استخراج بيانات الحساب بدقة من هيكل الاستجابة
+        account_info = data.get('data', data)
+        # البحث عن اسم صاحب الحساب بأكثر من مفتاح محتمل في الاستجابة
+        player_name = (
+            account_info.get('roleName') or 
+            account_info.get('nickname') or 
+            account_info.get('name') or 
+            data.get('roleName') or 
+            data.get('nickname') or 
+            "لاعب PUBG"
+        )
+        
+        # البحث عن الـ ID الحقيقي
+        player_id = (
+            account_info.get('roleId') or 
+            account_info.get('uid') or 
+            account_info.get('openId') or 
+            data.get('roleId') or 
+            data.get('uid') or 
+            "غير معروف"
+        )
+        
+        uc_balance = (
+            account_info.get('balance') or 
+            account_info.get('uc') or 
+            data.get('balance') or 
+            data.get('uc') or 
+            "---"
+        )
+        
+        # فحص إذا كان الرابط مكتمل أو خلصان من الأساس
+        res_text_lower = first_res.text.lower()
         ret_code = data.get('ret', data.get('code', -1))
         
-        # استخراج بيانات الحساب من الاستجابة الفعلية لميداسباي
-        # (حسب هيكل استجابة Midasbuy الشائع للروابط القصيرة)
-        account_info = data.get('data', {})
-        player_id = account_info.get('roleId', account_info.get('uid', account_info.get('openId', 'غير معروف')))
-        player_name = account_info.get('roleName', account_info.get('nickname', 'لاعب PUBG'))
-        uc_balance = account_info.get('balance', account_info.get('uc', '---'))
-        invites_count = account_info.get('invites', account_info.get('count', '0/60'))
-
-        if ret_code not in [0, 200] and 'success' not in first_res.text.lower():
-            if 'limit' in first_res.text.lower() or 'complete' in first_res.text.lower():
-                return True, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!", None
+        if ret_code not in [0, 200] or 'limit' in res_text_lower or 'complete' in res_text_lower or 'ended' in res_text_lower:
+            return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30) أو منتهي!"
+            
     except Exception as e:
         print(f"Error fetching player data: {e}")
-        return True, "❌ حدث خطأ أثناء قراءة تفاصيل الرابط.", None
+        return False, "❌ حدث خطأ أثناء قراءة تفاصيل الرابط أو أن الرابط منتهي."
 
-    success_count = 1  # الطلب الأول نجح وتم احتسابه
+    success_count = 1
 
-    # إطلاق باقي الـ 29 طلب بشكل متوازي (بالسرعة القصوى في نفس اللحظة)
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # إطلاق باقي اللفات بالتوازي لسرعة فائقة
+    with ThreadPoolExecutor(max_workers=15) as executor:
         futures = [executor.submit(process_single_request, session, short_link_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
@@ -120,14 +146,17 @@ def send_3x_help(short_link_url):
                 if r_code == 0 or 'success' in str(res_data).lower():
                     success_count += 1
 
+    elapsed_time = round(time.time() - start_time, 1)
+
+    # تنسيق الرسالة النهائي المطلوب تماماً
     result_msg = (
-        f"🆔 **ID:** `{player_id}`\n"
-        f"👤 **Name:** `{player_name}`\n"
-        f"🎟️ **UC:** `{uc_balance}`\n"
-        f"📊 **Invites:** `{success_count}/60`\n\n"
-        f"🎯 تم تنفيذ اللفات بنجاح وسرعة فائقة! (الناجح: {success_count})"
+        f"تم {success_count}/30\n"
+        f"• {uc_balance} . 💰\n"
+        f"• في {elapsed_time} ثانيه ⚙️\n"
+        f"• {player_name} 🌸\n"
+        f"• {player_id} 🆔"
     )
-    return True, result_msg, player_id
+    return True, result_msg
 
 def is_admin(username):
     if not username:
@@ -206,8 +235,6 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_inline(call):
-    user_id = call.from_user.id
-    username = call.from_user.username
     chat_id = call.message.chat.id
     
     if call.data == 'contact_admin':
@@ -225,6 +252,22 @@ def handle_inline(call):
             reply_markup=admin_markup, 
             parse_mode="Markdown"
         )
+    
+    elif call.data.startswith('buy_'):
+        bot.answer_callback_query(call.id)
+        package = call.data.split('_')[1]
+        prices = {'1': '15 ج.م', '2': '30 ج.م', '5': '75 ج.م (+1 هدية)', '10': '125 ج.م'}
+        price = prices.get(package, 'حسب الطلب')
+        
+        pay_text = (
+            f"🛒 **تفاصيل طلب شراء {package} Link**\n\n"
+            f"💰 السعر المطلوب: `{price}`\n\n"
+            f"💳 **بيانات الدفع (فودافون كاش / InstaPay):**\n"
+            f"• رقم المحفظة (فودافون كاش): `01507364191`\n"
+            f"• InstaPay: `01507364191`\n\n"
+            f"📸 **الرجاء إرسال صورة (Screenshot) للتحويل هنا في الشات وسيتم إضافة اللينكات لحسابك فوراً!**"
+        )
+        bot.send_message(chat_id, pay_text, parse_mode="Markdown")
 
 @bot.message_handler(content_types=['photo'])
 def handle_docs_photo(message):
@@ -242,33 +285,21 @@ def handle_messages(message):
     udata = get_user_data(user_id, username)
     lang = udata['lang']
 
+    # زرار الشراء يظهر باقات مرتبة تحت الرسالة
     if text in ['🛒 شراء Links', '🛒 Buy Links']:
-        if lang == 'ar':
-            buy_text = (
-                "🛒 **شراء Links**\n\n"
-                "• 1 Link • 15 EGP\n"
-                "• 2 Links • 30 EGP\n"
-                "• 5 Links • 75 EGP (+1 هدية)\n"
-                "• 10 Links • 125 EGP (عرض خاص)\n"
-                "• عدد مخصص (اللينك بـ 15 + هدية كل 5)\n\n"
-                "💳 **بيانات الدفع (فودافون كاش / InstaPay):**\n"
-                "• رقم المحفظة: `01507364191`\n"
-                "• InstaPay: `01507364191`\n\n"
-                "📸 ابعت Screenshot التحويل هنا مباشرة بعد التحويل!"
-            )
-        else:
-            buy_text = (
-                "🛒 **Buy Links**\n\n"
-                "• 1 Link • 15 EGP\n"
-                "• 2 Links • 30 EGP\n"
-                "• 5 Links • 75 EGP (+1 Bonus)\n"
-                "• 10 Links • 125 EGP\n"
-                "• Custom Amount\n\n"
-                "💳 **Payment Info (Vodafone Cash / InstaPay):**\n"
-                "• Wallet: `01507364191`\n\n"
-                "📸 Send screenshot here after transfer!"
-            )
-        bot.send_message(chat_id, buy_text, parse_mode="Markdown")
+        buy_markup = types.InlineKeyboardMarkup(row_width=2)
+        buy_markup.add(
+            types.InlineKeyboardButton("1 Link (15 EGP)", callback_data="buy_1"),
+            types.InlineKeyboardButton("2 Links (30 EGP)", callback_data="buy_2"),
+            types.InlineKeyboardButton("5 Links (+1 هدية)", callback_data="buy_5"),
+            types.InlineKeyboardButton("10 Links (عرض خاص)", callback_data="buy_10")
+        )
+        bot.send_message(
+            chat_id, 
+            "🛒 **اختر الباقة المناسبة للشراء من الأزرار بالأسفل:**\n\n🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها!", 
+            reply_markup=buy_markup, 
+            parse_mode="Markdown"
+        )
         return
 
     elif text in ['💳 رصيدي', '💳 My Balance']:
@@ -306,28 +337,31 @@ def handle_messages(message):
         )
         return
 
+    # معالجة روابط ميداسباي مع حماية الرصيد وفحص الرابط الخلصان
     if 'midasbuy.com' in text or 'http' in text:
         if not is_admin(username):
             if udata['balance'] <= 0:
                 bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
                 return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الحساب وتنفيذ اللفات بسرعة الصاروخ...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الرابط وتنفيذ اللفات...")
         
-        success, res, pid = send_3x_help(text.strip())
+        success, res = send_3x_help(text.strip())
         
-        if "مكتمل بالفعل" in res or "منتهية بالكامل" in res or "غير صالح" in res or "خطأ" in res:
-            bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}\n\n🛡️ <b>ملاحظة:</b> لم يتم خصم أي رصيد لأن الرابط غير صالح أو مكتمل!", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
+        # إذا كان الرابط خلصان أو منتهي، لا يتم خصم أي رصيد من المستخدم
+        if not success:
+            bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد لأن الرابط منتهي أو خلصان!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
             return
 
+        # الخصم فقط في حال نجاح التنفيذ الفعلي
         if not is_admin(username):
             udata['balance'] -= 1
 
-        bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}\n\n💳 تم خصم 1 Link. رصيدك المتبقي: {udata['balance']} Link", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        bot.edit_message_text(res, chat_id=chat_id, message_id=msg.message_id)
         return
         
     else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه في ثوانٍ!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
 
 def run_telegram_bot():
     while True:
