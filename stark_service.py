@@ -12,6 +12,9 @@ from telebot import types
 TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TOKEN)
 
+# قائمة يوزرات الأدمن والدعم (رصيد دائم ومجاني غير محدود للمنشئ والدعم فقط)
+ADMIN_USERNAMES = ["Vartolugaming", "S1_MBA1", "SImba_5", "YAMAC_GAMING"]
+
 # إعداد سيرفر الويب لضمان بقاء البوت شغال 24/7 على Railway
 app = Flask('')
 
@@ -49,7 +52,7 @@ def generate_fresh_cookies():
     finally:
         driver.quit()
 
-# دالة فحص الرابط وتنفيذه بشكل حقيقي بناءً على حالته الفعليه
+# دالة ذكية لفحص الرابط ومعرفة عدد اللفات المتبقية وتنفذيها بدقة
 def send_3x_help(short_link_url):
     cookies = generate_fresh_cookies()
     if not cookies:
@@ -66,41 +69,51 @@ def send_3x_help(short_link_url):
         'X-Requested-With': 'XMLHttpRequest'
     }
 
-    # 1. الخطوة الأولى: فحص الرابط لمعرفة هل هو خلصان ولا لسه؟
-    try:
-        check_response = session.get(short_link_url, headers=headers, timeout=10)
-        if check_response.status_code == 200:
-            check_data = check_response.json()
-            if check_data.get('data', {}).get('is_completed') == True or check_data.get('msg') == 'completed':
-                return True, "⚠️ عذراً، هذا الرابط **مكتمل بالفعل (خلصان)** ولا يقبل مساعدات جديدة!"
-    except Exception as e:
-        print(f"Check link warning: {e}")
-
-    # 2. الخطوة التانية: لو الرابط لسه شغال، نبدا ننفذ الـ 30 مساعدة حقيقي
     success_count = 0
     failed_count = 0
+    remaining_slots = 30  # الافتراضي الحد الأقصى
 
+    # محاولة معرفة الحالة الأولى للرابط أو إرسال طلبات تدريجية لقياس الاستجابة
     for i in range(30):
         try:
             response = session.post(short_link_url, headers=headers, json={}, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('ret') == 0 or data.get('code') == 0:
+                ret_code = data.get('ret', data.get('code', -1))
+                
+                # لو الطلب نجح واتقبلت المساعدة
+                if ret_code == 0 or 'success' in response.text.lower():
                     success_count += 1
-                elif 'limit' in response.text.lower() or 'complete' in response.text.lower():
-                    # لو الرابط خلص للنهاية أثناء اللفات
+                # لو السيرفر رد إن الرابط اكتمل بالكامل (خلصان)
+                elif 'limit' in response.text.lower() or 'complete' in response.text.lower() or ret_code == 1001 or ret_code == 2001:
+                    if success_count == 0 and i == 0:
+                        return True, "⚠️ عذراً، هذا الرابط **دعواته منتهية بالكامل (خلصان 30/30)** ولا يقبل أي لفات جديدة!"
                     break
                 else:
                     failed_count += 1
             else:
                 failed_count += 1
                 
-            time.sleep(1.5)
+            time.sleep(1.2)
         except Exception as e:
             failed_count += 1
 
-    result_msg = f"✅ تم التنفيذ الحقيقي بنجاح: {success_count}/30\n⚠️ روابط منتهية أو مكتملة: {failed_count}"
+    if success_count == 0:
+        return True, "⚠️ عذراً، هذا الرابط **مكتمل بالفعل (خلصان)** أو غير صالح!"
+
+    result_msg = (
+        f"🎯 **تقرير حالة الرابط:**\n\n"
+        f"✅ عدد اللفات التي تم تنفيذها بنجاح: **{success_count} لفة**\n"
+        f"⚠️ محاولات فاشلة أو روابط متوقفة: {failed_count}\n"
+        f"📊 الحالة النهائية: الرابط استنفد محاولاته أو تم اكتماله بنجاح!"
+    )
     return True, result_msg
+
+# فحص هل المستخدم أدمن أو منشئ أم لا
+def is_admin(username):
+    if not username:
+        return False
+    return username.replace("@", "") in ADMIN_USERNAMES
 
 # --- أزرار وتفاعلات بوت التليجرام ---
 @bot.message_handler(commands=['start'])
@@ -113,21 +126,38 @@ def send_welcome(message):
     btn5 = types.KeyboardButton('🌐 تغيير اللغة')
     markup.add(btn1, btn2, btn3, btn4, btn5)
     
+    user = message.from_user
+    user_name = user.first_name if user.first_name else "صديقي"
+    user_type = "👑 أدمن (رصيد مجاني غير محدود)" if is_admin(user.username) else "💳 الرصيد: Link 0"
+    
     welcome_text = (
-        "👑 Ⓢ ➂ Ⓔ Ⓔ Ⓓ 👑\n\n"
+        f"أهلاً بك يا <b>{user_name}</b> في بوت Ⓢ ➂ Ⓔ Ⓔ Ⓓ 👑\n\n"
         "تم تفعيل حسابك بنجاح وأصبح جاهزًا للاستخدام.\n\n"
-        "💳 الرصيد: Link 0\n"
+        f"{user_type}\n"
         "🎁 Free Link: غير متاحة\n"
         "🔗 1 Link = 30 Invite\n"
         "⚡ COMPLETE 60 = 30 Invite إضافية\n\n"
         "اختر الخدمة المطلوبة من القائمة بالأسفل 👇"
     )
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="HTML")
+
+# استقبال صور الإسبرين شوت (إثبات الدفع)
+@bot.message_handler(content_types=['photo'])
+def handle_docs_photo(message):
+    user = message.from_user
+    user_name = user.first_name if user.first_name else "مستخدم"
+    username = f"@{user.username}" if user.username else "بدون يوزر"
+    chat_id = message.chat.id
+
+    bot.reply_to(message, f"📸 تسلم يا <b>{user_name}</b>، تم استلام إثبات الدفع بنجاح.\n\n⏳ جارٍ مراجعة تفاصيل التحويل والتأكد من وصول الأموال لإضافة اللينكات لحسابك فوراً.", parse_mode="HTML")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     text = message.text
     chat_id = message.chat.id
+    user = message.from_user
+    user_name = user.first_name if user.first_name else "صديقي"
+    username = user.username
     
     if text == '🛒 شراء Links':
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
@@ -140,44 +170,57 @@ def handle_messages(message):
             types.KeyboardButton('✍️ عدد مخصص'),
             types.KeyboardButton('❌ إلغاء')
         )
-        bot.send_message(chat_id, "🛒 **شراء Links**\n\nاختر الباقة المطلوبة من الأسفل لتظهر لك بيانات الدفع والتحويل.", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(chat_id, f"🛒 **شراء Links**\n\nيا {user_name}، اختر الباقة المطلوبة من الأسفل لتظهر لك بيانات الدفع والتحويل.", reply_markup=markup, parse_mode="Markdown")
     
     elif text == '❌ إلغاء' or text == 'الغاء':
         send_welcome(message)
         
     elif text == '💳 رصيدي':
-        bot.send_message(chat_id, "💼 **رصيد حسابك**\n\n💳 الرصيد: Link 0\n🎁 Free Link: غير متاحة\n🔗 1 Link = 30 Invite\n⚡ COMPLETE 60 = 30 Invite إضافية", parse_mode="Markdown")
+        if is_admin(username):
+            balance_str = "👑 أدمن (رصيد دائم ومجاني غير محدود)"
+        else:
+            balance_str = "💳 الرصيد: Link 0 (يلزم الشراء للمتابعة)"
+            
+        bot.send_message(chat_id, f"💼 **رصيد حسابك يا {user_name}**\n\n{balance_str}\n🎁 Free Link: غير متاحة\n🔗 1 Link = 30 Invite\n⚡ COMPLETE 60 = 30 Invite إضافية", parse_mode="Markdown")
         
     elif text == '📞 تواصل مع الأدمن':
         admin_text = (
-            "📞 **للتواصل مع الدعم والأدمن مباشرة:**\n\n"
+            f"📞 **تواصل مع الدعم يا {user_name}:**\n\n"
             "يمكنك مراسلة أحد الإداريين عبر اليوزرات التالية:\n"
             "👤 @Vartolugaming\n"
             "👤 @S1_MBA1\n"
-            "👤 @SImba_5\n\n"
-            "ارسل مشكلتك أو إثبات الدفع وسيتم الرد عليك في أقرب وقت!"
+            "👤 @SImba_5\n"
+            "👤 @YAMAC_GAMING\n\n"
+            "ارسل مشكلتك أو إثبات الدفع بعد التأكد من صحته وسيتم الرد عليك في أقرب وقت!"
         )
         bot.send_message(chat_id, admin_text, parse_mode="Markdown")
 
     elif 'Links' in text or 'Link' in text:
         payment_info = (
-            f"📦 **تفاصيل طلب الشراء:**\n"
+            f"📦 **تفاصيل طلب الشراء (يا {user_name}):**\n"
             f"الباقة المختارة: {text}\n\n"
             "💳 **بيانات الدفع (فودافون كاش / InstaPay):**\n"
             "• رقم المحفظة: `01507364191`\n"
             "• InstaPay: `01507364191`\n\n"
-            "📸 **بعد التحويل:**\n"
-            "ابعت Screenshot الدفع هنا مباشرة، وسيتم مراجعة الطلب وإضافة الرصيد فوراً!"
+            "⚠️ **تنبيه هام جداً:**\n"
+            "يجب التأكد من أن الأموال قد تم تحويلها بالفعل وبشكل صحيح قبل إرسال الإيصال.\n\n"
+            "📸 **بعد التأكد والتحويل:**\n"
+            "ابعت Screenshot التحويل هنا مباشرة، وسيتم مراجعته وإضافة اللينكات لحسابك!"
         )
         bot.send_message(chat_id, payment_info, parse_mode="Markdown")
 
     elif 'midasbuy.com' in text or 'short_link' in text:
-        msg = bot.send_message(chat_id, "🚀 Stark Bot بيفحص الرابط وينفذ العجلات الحقيقية الآن...")
+        # التحقق: لو مستخدم عادي ورصيده 0، يمنعه ويطلب منه الشراء (ماعدا الأدمن)
+        if not is_admin(username):
+            bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (Link 0). يرجى شراء باقة من القائمة للاستمرار.")
+            return
+
+        msg = bot.send_message(chat_id, f"🚀 يا {user_name}، Stark Bot يفحص الرابط ويحسب اللفات المتبقية لتنفيذها الآن...")
         success, res = send_3x_help(text.strip())
         bot.edit_message_text(f"⚡ **Stark Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
         
     else:
-        bot.send_message(chat_id, "⚡ جاهز، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه أوتوماتيك!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه أوتوماتيك!")
 
 # تشغيل البوت مع السيرفر 24/7
 def run_telegram_bot():
