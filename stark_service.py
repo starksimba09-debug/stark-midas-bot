@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import telebot
 from telebot import types
 
-TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg" # توكن بوتك
+TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TOKEN)
 
 ADMIN_USERNAMES = ["YAMAC_GAMING", "S1_MBA1", "SImba_5", "Vartolugaming"]
@@ -30,7 +30,8 @@ def keep_alive():
     server_thread.start()
 
 def extract_url(text):
-    # استخراج دقيق لأي رابط ميداسباي سواء قصير أو API
+    if not text:
+        return None
     urls = re.findall(r'(https?://[^\s]+midasbuy\.com[^\s]+)', text)
     if urls:
         return urls[0].strip()
@@ -38,9 +39,12 @@ def extract_url(text):
 
 def process_single_request(url, headers):
     try:
-        # استخدام جلسة مؤقتة سريعة لكل طلب
         with requests.Session() as s:
+            # محاولة طلب GET ثم POST لضمان نجاح اللفة
             res = s.get(url, headers=headers, timeout=3, verify=False)
+            if res.status_code != 200:
+                res = s.post(url, headers=headers, json={}, timeout=3, verify=False)
+            
             if res.status_code == 200:
                 return res.json()
     except:
@@ -50,7 +54,6 @@ def process_single_request(url, headers):
 def send_3x_help(target_url):
     start_time = time.time()
     
-    # هيدرز احترافية لتخطي حماية ميداسباي والظهور كمتصفح موبايل حقيقي
     headers = {
         'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
@@ -58,18 +61,17 @@ def send_3x_help(target_url):
         'Referer': 'https://www.midasbuy.com/midasbuy/ot/ug/buy/pubgm',
         'Origin': 'https://www.midasbuy.com',
         'Connection': 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
         'X-Requested-With': 'XMLHttpRequest'
     }
 
     try:
-        # الطلب الأساسي لجلب البيانات
+        # فحص الرابط الأول وجلب بيانات الحساب
         first_res = requests.get(target_url, headers=headers, timeout=5, verify=False)
-        
         if first_res.status_code != 200:
-            return False, f"⚠️ عذراً، الموقع رفض الاتصال (كود {first_res.status_code}). تأكد من الرابط."
+            first_res = requests.post(target_url, headers=headers, json={}, timeout=5, verify=False)
+            
+        if first_res.status_code != 200:
+            return False, f"⚠️ عذراً، الموقع رفض الاتصال أو الرابط غير صالح."
         
         try:
             data = first_res.json()
@@ -77,15 +79,14 @@ def send_3x_help(target_url):
             return False, "⚠️ عذراً، استجابة موقع ميداسباي غير صالحة."
 
         res_text_lower = first_res.text.lower()
-        if 'limit' in res_text_lower or 'complete' in res_text_lower or 'ended' in res_text_lower or 'max' in res_text_lower or 'finish' in res_text_lower:
+        if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
             return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
 
-        # استخراج البيانات بذكاء
         account_info = data.get('data', {})
         if not isinstance(account_info, dict):
             account_info = data
 
-        player_name = (account_info.get('roleName') or account_info.get('nickname') or data.get('roleName') or "غير معروف")
+        player_name = (account_info.get('roleName') or account_info.get('nickname') or data.get('roleName') or "لاعب PUBG")
         player_id = (account_info.get('roleId') or account_info.get('uid') or data.get('roleId') or "غير معروف")
         uc_balance = (account_info.get('balance') or account_info.get('uc') or data.get('balance') or "0")
             
@@ -95,20 +96,18 @@ def send_3x_help(target_url):
 
     success_count = 1
 
-    # تنفيذ باقي الـ 29 طلب بسرعة الصاروخ
+    # تشغيل الـ 29 طلب الباقين بالتوازي السريع
     with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(process_single_request, target_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
-                # التحقق من نجاح الطلب
                 r_code = res_data.get('ret', res_data.get('code', -1))
                 if str(r_code) in ["0", "200"] or 'success' in str(res_data).lower():
                     success_count += 1
 
     elapsed_time = round(time.time() - start_time, 1)
 
-    # الرسالة المطابقة للبوت التاني بالظبط
     result_msg = (
         f"تم {success_count}/30\n"
         f"• {uc_balance} . 💰\n"
@@ -125,7 +124,7 @@ def is_admin(username):
 
 def get_user_data(user_id, username=''):
     if user_id not in users_db:
-        users_db[user_id] = {'balance': 1, 'lang': 'ar', 'username': username}
+        users_db[user_id] = {'balance': 1, 'username': username}
     return users_db[user_id]
 
 def get_main_keyboard():
@@ -169,50 +168,68 @@ def handle_messages(message):
     
     udata = get_user_data(user_id, username)
 
-    # الأزرار الأساسية
     if text == '🛒 شراء Links':
-        bot.send_message(chat_id, "🛒 تواصل مع الأدمن لشراء باقة.")
-        return
-    elif text == '💳 رصيدي':
-        bal = "أدمن" if is_admin(username) else f"{udata['balance']} Link"
-        bot.send_message(chat_id, f"💼 **رصيد حسابك:** {bal}", parse_mode="Markdown")
-        return
-    elif text == '🔗 دعوة صديق':
-        bot.send_message(chat_id, "🔗 رابط الدعوة الخاص بك...")
-        return
-    elif text == '📞 تواصل مع الأدمن':
-        bot.send_message(chat_id, "📞 تواصل مع: @YAMAC_GAMING")
+        pay_text = (
+            f"🛒 **تواصل مع الأدمن لشراء باقة Links:**\n\n"
+            f"💳 **بيانات الدفع (فودافون كاش / InstaPay):**\n"
+            f"• رقم المحفظة: `01507364191`\n\n"
+            f"📸 **ارسل إثبات التحويل (Screenshot) هنا وسيتم شحن رصيدك فوراً!**"
+        )
+        bot.send_message(chat_id, pay_text, parse_mode="Markdown")
         return
 
-    # استخراج الرابط من رسالة اللعبة
+    elif text == '💳 رصيدي':
+        bal = "أدمن (غير محدود) 👑" if is_admin(username) else f"{udata['balance']} Link 💳"
+        bot.send_message(chat_id, f"💼 **رصيد حسابك:** {bal}", parse_mode="Markdown")
+        return
+
+    elif text == '🔗 دعوة صديق':
+        bot_info = bot.get_me()
+        bot_link = f"https://t.me/{bot_info.username}?start={user_id}"
+        invite_msg = (
+            f"🔗 **رابط الدعوة الخاص بك:**\n`{bot_link}`\n\n"
+            "🎁 شارك الرابط مع أصدقائك وخذ لينك هدية لكل شخص ينضم!"
+        )
+        bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
+        return
+
+    elif text == '📞 تواصل مع الأدمن':
+        admin_markup = types.InlineKeyboardMarkup(row_width=2)
+        admin_markup.add(
+            types.InlineKeyboardButton("👤 YAMAC_GAMING", url="https://t.me/YAMAC_GAMING"),
+            types.InlineKeyboardButton("👤 S1_MBA1", url="https://t.me/S1_MBA1")
+        )
+        bot.send_message(chat_id, "📞 **اختر الأدمن للمراسلة المباشرة:**", reply_markup=admin_markup, parse_mode="Markdown")
+        return
+
+    # فحص إذا كانت الرسالة تحتوي على رابط ميداسباي
     extracted_url = extract_url(text)
-    
     if extracted_url:
         if not is_admin(username) and udata['balance'] <= 0:
-            bot.send_message(chat_id, f"❌ رصيدك غير كافي (0 Link).")
+            bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
         msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ الفوري...")
         
-        # إرسال الرابط للمعالجة
         success, res = send_3x_help(extracted_url)
         
         if not success:
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
             return
 
-        # خصم الرصيد في حالة النجاح فقط
         if not is_admin(username):
             udata['balance'] -= 1
 
         bot.edit_message_text(res, chat_id=chat_id, message_id=msg.message_id)
+        return
+        
     else:
-        bot.send_message(chat_id, f"⚡ ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
 
 def run_telegram_bot():
     while True:
         try:
-            bot.polling(non_stop=True)
+            bot.polling(non_stop=True, interval=1)
         except Exception as e:
             time.sleep(5)
 
