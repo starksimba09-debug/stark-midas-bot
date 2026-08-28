@@ -8,14 +8,15 @@ from selenium.webdriver.chrome.options import Options
 import telebot
 from telebot import types
 
-# توكن البوت الحقيقي
 TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TOKEN)
 
-# قائمة يوزرات الأدمن والدعم (رصيد دائم ومجاني غير محدود للمنشئ والدعم فقط)
+# يوزرات الأدمن بدقة (بدون علامة @)
 ADMIN_USERNAMES = ["Vartolugaming", "S1_MBA1", "SImba_5", "YAMAC_GAMING"]
 
-# إعداد سيرفر الويب لضمان بقاء البوت شغال 24/7 على Railway
+# قاعدة بيانات مؤقتة لتخزين (رصيد المستخدمين، اللغة، وهل أخد هدية أول مرة ولا لأ، ورابط الدعوة)
+users_db = {}
+
 app = Flask('')
 
 @app.route('/')
@@ -31,7 +32,6 @@ def keep_alive():
     server_thread.daemon = True
     server_thread.start()
 
-# دالة توليد الكوكيز أوتوماتيك باستخدام متصفح خفي (Headless Chrome)
 def generate_fresh_cookies():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -52,7 +52,6 @@ def generate_fresh_cookies():
     finally:
         driver.quit()
 
-# دالة ذكية لفحص الرابط ومعرفة عدد اللفات المتبقية وتنفذيها بدقة
 def send_3x_help(short_link_url):
     cookies = generate_fresh_cookies()
     if not cookies:
@@ -83,7 +82,7 @@ def send_3x_help(short_link_url):
                     success_count += 1
                 elif 'limit' in response.text.lower() or 'complete' in response.text.lower() or ret_code == 1001 or ret_code == 2001:
                     if success_count == 0 and i == 0:
-                        return True, "⚠️ عذراً، هذا الرابط **دعواته منتهية بالكامل (خلصان 30/30)** ولا يقبل أي لفات جديدة!"
+                        return True, "⚠️ عذراً، هذا الرابط دعواته منتهية بالكامل (خلصان 30/30)!"
                     break
                 else:
                     failed_count += 1
@@ -95,126 +94,195 @@ def send_3x_help(short_link_url):
             failed_count += 1
 
     if success_count == 0:
-        return True, "⚠️ عذراً، هذا الرابط **مكتمل بالفعل (خلصان)** أو غير صالح!"
+        return True, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان) أو غير صالح!"
 
-    result_msg = (
-        f"🎯 **تقرير حالة الرابط:**\n\n"
-        f"✅ عدد اللفات التي تم تنفيذها بنجاح: **{success_count} لفة**\n"
-        f"⚠️ محاولات فاشلة أو روابط متوقفة: {failed_count}\n"
-        f"📊 الحالة النهائية: الرابط استنفد محاولاته أو تم اكتماله بنجاح!"
-    )
+    result_msg = f"🎯 عدد اللفات التي تم تنفيذها بنجاح: {success_count} لفة"
     return True, result_msg
 
-# فحص هل المستخدم أدمن أو منشئ أم لا
 def is_admin(username):
     if not username:
         return False
     return username.replace("@", "") in ADMIN_USERNAMES
 
-# --- أزرار وتفاعلات بوت التليجرام ---
+def get_user_data(user_id, username=''):
+    if user_id not in users_db:
+        # أول مرة يستخدم البوت -> ياخد 1 لينك هدية مجاني!
+        users_db[user_id] = {
+            'balance': 1, 
+            'lang': 'ar',
+            'username': username
+        }
+    return users_db[user_id]
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    args = message.text.split()
+    
+    # نظام الدعوات (لو دخل من خلال رابط صديقه)
+    if len(args) > 1:
+        try:
+            referrer_id = int(args[1])
+            if referrer_id != user_id and referrer_id in users_db:
+                # Give referrer a bonus link
+                users_db[referrer_id]['balance'] += 1
+                try:
+                    bot.send_message(referrer_id, "🎉 مبروك! صديقك انضم للبوت من خلال رابطك واشتريت، حصلت على (1 Link) هدية!")
+                except:
+                    pass
+        except:
+            pass
+
+    udata = get_user_data(user_id, username)
+    lang = udata['lang']
+    
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton('🛒 شراء Links')
-    btn2 = types.KeyboardButton('🔗 إرسال رابط')
-    btn3 = types.KeyboardButton('💳 رصيدي')
-    btn4 = types.KeyboardButton('📞 تواصل مع الأدمن')
-    btn5 = types.KeyboardButton('🌐 تغيير اللغة')
+    if lang == 'ar':
+        btn1 = types.KeyboardButton('🛒 شراء Links')
+        btn2 = types.KeyboardButton('🔗 إرسال رابط (دعوة صديق)')
+        btn3 = types.KeyboardButton('💳 رصيدي')
+        btn4 = types.KeyboardButton('📞 تواصل مع الأدمن')
+        btn5 = types.KeyboardButton('🌐 Change Language / English')
+    else:
+        btn1 = types.KeyboardButton('🛒 Buy Links')
+        btn2 = types.KeyboardButton('🔗 Invite Friend')
+        btn3 = types.KeyboardButton('💳 My Balance')
+        btn4 = types.KeyboardButton('📞 Contact Admin')
+        btn5 = types.KeyboardButton('🌐 تغيير اللغة / العربية')
+        
     markup.add(btn1, btn2, btn3, btn4, btn5)
     
-    user = message.from_user
-    user_name = user.first_name if user.first_name else "صديقي"
-    user_type = "👑 أدمن (رصيد مجاني غير محدود)" if is_admin(user.username) else "💳 الرصيد: Link 0"
+    user_name = message.from_user.first_name if message.from_user.first_name else "صديقي"
     
-    welcome_text = (
-        f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
-        "تم تفعيل حسابك بنجاح وأصبح جاهزًا للاستخدام.\n\n"
-        f"{user_type}\n"
-        "🎁 Free Link: غير متاحة\n"
-        "🔗 1 Link = 30 Invite\n"
-        "⚡ COMPLETE 60 = 30 Invite إضافية\n\n"
-        "اختر الخدمة المطلوبة من القائمة بالأسفل 👇"
-    )
+    if is_admin(username):
+        balance_display = "👑 أدمن (رصيد مجاني غير محدود)"
+    else:
+        balance_display = f"💳 رصيدك الحالي: {udata['balance']} Link (تم إعطاء 1 لينك هدية ترحيبية لأول استخدام 🎁)"
+
+    if lang == 'ar':
+        welcome_text = (
+            f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
+            f"{balance_display}\n"
+            "🔗 1 Link = 30 Invite\n"
+            "🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها + لينك هدية عند دعوة صديق!\n\n"
+            "اختر الخدمة المطلوبة من القائمة بالأسفل 👇"
+        )
+    else:
+        welcome_text = (
+            f"Welcome <b>{user_name}</b> to <b>STARK</b> Bot 👑\n\n"
+            f"{balance_display}\n"
+            "🔗 1 Link = 30 Invite\n"
+            "🎁 Bonus link for every 5 bought + bonus for inviting friends!\n\n"
+            "Choose a service below 👇"
+        )
+        
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup, parse_mode="HTML")
 
-# استقبال صور الإسبرين شوت (إثبات الدفع)
 @bot.message_handler(content_types=['photo'])
 def handle_docs_photo(message):
-    user = message.from_user
-    user_name = user.first_name if user.first_name else "مستخدم"
-    bot.reply_to(message, f"📸 تسلم يا <b>{user_name}</b>، تم استلام إثبات الدفع بنجاح.\n\n⏳ جارٍ مراجعة تفاصيل التحويل والتأكد من وصول الأموال لإضافة اللينكات لحسابك فوراً.", parse_mode="HTML")
+    user_name = message.from_user.first_name if message.from_user.first_name else "مستخدم"
+    bot.reply_to(message, f"📸 تسلم يا <b>{user_name}</b>، تم استلام إثبات الدفع بنجاح.\n\n⏳ جارٍ مراجعة تفاصيل التحويل وإضافة اللينكات لحسابك فوراً.", parse_mode="HTML")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
     text = message.text
     chat_id = message.chat.id
-    user = message.from_user
-    user_name = user.first_name if user.first_name else "صديقي"
-    username = user.username
+    user_id = message.from_user.id
+    username = message.from_user.username
+    user_name = message.from_user.first_name if message.from_user.first_name else "صديقي"
     
-    if text == '🛒 شراء Links':
+    udata = get_user_data(user_id, username)
+    lang = udata['lang']
+
+    if text in ['🌐 Change Language / English', '🌐 تغيير اللغة / العربية']:
+        if udata['lang'] == 'ar':
+            udata['lang'] = 'en'
+        else:
+            udata['lang'] = 'ar'
+        send_welcome(message)
+        return
+
+    if text in ['🛒 شراء Links', '🛒 Buy Links']:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-        markup.add(
-            types.KeyboardButton('🔥 15+2 = 17 Links | 250 EGP | 5 USDT'),
-            types.KeyboardButton('🛒 2 Link • 40 EGP • 0.8 USDT'),
-            types.KeyboardButton('🛒 5 Link • 100 EGP • 2 USDT'),
-            types.KeyboardButton('🛒 10 Link • 200 EGP • 4 USDT'),
-            types.KeyboardButton('🛒 50 Link • 1000 EGP • 20 USDT'),
-            types.KeyboardButton('✍️ عدد مخصص'),
-            types.KeyboardButton('❌ إلغاء')
-        )
-        bot.send_message(chat_id, f"🛒 **شراء Links**\n\nيا {user_name}، اختر الباقة المطلوبة من الأسفل لتظهر لك بيانات الدفع والتحويل.", reply_markup=markup, parse_mode="Markdown")
+        if lang == 'ar':
+            markup.add(
+                types.KeyboardButton('🛒 1 Link • 15 EGP'),
+                types.KeyboardButton('🛒 2 Links • 30 EGP'),
+                types.KeyboardButton('🔥 10 Links • 125 EGP (عرض خاص)'),
+                types.KeyboardButton('🛒 5 Links • 75 EGP (+1 هدية)'),
+                types.KeyboardButton('✍️ عدد مخصص (اللينك بـ 15 + هدية كل 5)'),
+                types.KeyboardButton('❌ إلغاء')
+            )
+            bot.send_message(chat_id, f"🛒 **شراء Links**\n\nيا {user_name}، اختر الباقة المطلوبة:", reply_markup=markup, parse_mode="Markdown")
+        else:
+            markup.add(
+                types.KeyboardButton('🛒 1 Link • 15 EGP'),
+                types.KeyboardButton('🛒 2 Links • 30 EGP'),
+                types.KeyboardButton('🔥 10 Links • 125 EGP'),
+                types.KeyboardButton('🛒 5 Links • 75 EGP (+1 Bonus)'),
+                types.KeyboardButton('✍️ Custom Amount'),
+                types.KeyboardButton('❌ Cancel')
+            )
+            bot.send_message(chat_id, f"🛒 **Buy Links**\n\nChoose your package:", reply_markup=markup, parse_mode="Markdown")
     
-    elif text == '❌ إلغاء' or text == 'الغاء':
+    elif text in ['❌ إلغاء', '❌ Cancel', 'الغاء']:
         send_welcome(message)
         
-    elif text == '💳 رصيدي':
+    elif text in ['💳 رصيدي', '💳 My Balance']:
         if is_admin(username):
-            balance_str = "👑 أدمن (رصيد دائم ومجاني غير محدود)"
+            balance_str = "👑 أدمن (رصيد مجاني غير محدود)"
         else:
-            balance_str = "💳 الرصيد: Link 0 (يلزم الشراء للمتابعة)"
+            balance_str = f"💳 رصيدك الحالي: {udata['balance']} Link"
             
-        bot.send_message(chat_id, f"💼 **رصيد حسابك يا {user_name}**\n\n{balance_str}\n🎁 Free Link: غير متاحة\n🔗 1 Link = 30 Invite\n⚡ COMPLETE 60 = 30 Invite إضافية", parse_mode="Markdown")
+        bot.send_message(chat_id, f"💼 **رصيد حسابك:**\n\n{balance_str}", parse_mode="Markdown")
         
-    elif text == '📞 تواصل مع الأدمن':
+    elif text in ['📞 تواصل مع الأدمن', '📞 Contact Admin']:
         admin_text = (
-            f"📞 **تواصل مع الدعم يا {user_name}:**\n\n"
-            "يمكنك مراسلة أحد الإداريين عبر اليوزرات التالية:\n"
+            "📞 **تواصل مع الدعم:**\n\n"
             "👤 @Vartolugaming\n"
             "👤 @S1_MBA1\n"
             "👤 @SImba_5\n"
-            "👤 @YAMAC_GAMING\n\n"
-            "ارسل مشكلتك أو إثبات الدفع بعد التأكد من صحته وسيتم الرد عليك في أقرب وقت!"
+            "👤 @YAMAC_GAMING\n"
         )
         bot.send_message(chat_id, admin_text, parse_mode="Markdown")
 
-    elif 'Links' in text or 'Link' in text:
+    elif text in ['🔗 إرسال رابط (دعوة صديق)', '🔗 Invite Friend']:
+        bot_info = bot.get_me()
+        bot_link = f"https://t.me/{bot_info.username}?start={user_id}"
+        invite_msg = (
+            f"🔗 **رابط دعوة الأصدقاء الخاص بك:**\n\n"
+            f"`{bot_link}`\n\n"
+            "🎁 شارك هذا الرابط مع أصدقائك، وعندما ينضم أحدهم ويقوم بالشراء ستحصل فوراً على **لينك هدية**!"
+        )
+        bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
+
+    elif 'Link' in text or 'Links' in text or 'EGP' in text or 'عدد مخصص' in text or 'Custom Amount' in text:
         payment_info = (
-            f"📦 **تفاصيل طلب الشراء (يا {user_name}):**\n"
-            f"الباقة المختارة: {text}\n\n"
+            f"📦 **تفاصيل طلب الشراء:**\n"
+            f"الباقة: {text}\n\n"
             "💳 **بيانات الدفع (فودافون كاش / InstaPay):**\n"
             "• رقم المحفظة: `01507364191`\n"
             "• InstaPay: `01507364191`\n\n"
-            "⚠️ **تنبيه هام جداً:**\n"
-            "يجب التأكد من أن الأموال قد تم تحويلها بالفعل وبشكل صحيح قبل إرسال الإيصال.\n\n"
-            "📸 **بعد التأكد والتحويل:**\n"
-            "ابعت Screenshot التحويل هنا مباشرة، وسيتم مراجعته وإضافة اللينكات لحسابك!"
+            "⚠️ **تنبيه هام:**\n"
+            "تأكد من صحة التحويل ووصول الأموال، ثم ابعت Screenshot (صورة التحويل) هنا في البوت مباشرة لإضافة اللينكات ورصيد الهدايا لحسابك!"
         )
         bot.send_message(chat_id, payment_info, parse_mode="Markdown")
 
-    elif 'midasbuy.com' in text or 'short_link' in text:
+    elif 'midasbuy.com' in text or 'http' in text:
         if not is_admin(username):
-            bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (Link 0). يرجى شراء باقة من القائمة للاستمرار.")
-            return
+            if udata['balance'] <= 0:
+                bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
+                return
+            udata['balance'] -= 1  # خصم لينك مقابل التنفيذ
 
-        msg = bot.send_message(chat_id, f"🚀 يا {user_name}، STARK Bot بيفحص الرابط ويحسب اللفات المتبقية لتنفيذها الآن...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الرابط وتنفيذ اللفات...")
         success, res = send_3x_help(text.strip())
         bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
         
     else:
         bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه أوتوماتيك!")
 
-# تشغيل البوت مع السيرفر 24/7
 def run_telegram_bot():
     while True:
         try:
