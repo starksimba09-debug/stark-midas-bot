@@ -30,7 +30,7 @@ def keep_alive():
 
 def process_single_request(session, short_link_url, headers):
     try:
-        response = session.post(short_link_url, headers=headers, json={}, timeout=3)
+        response = session.post(short_link_url, headers=headers, json={}, timeout=2)
         if response.status_code == 200:
             return response.json()
     except:
@@ -41,11 +41,10 @@ def send_3x_help(short_link_url):
     start_time = time.time()
     
     session = requests.Session()
-    # تعديل الـ Headers لتبدو وكأنها طلب حقيقي من متصفح هاتف/كمبيوتر لتجاوز حماية ميداسباي
     headers = {
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Content-Type': 'application/json;charset=UTF-8',
@@ -53,19 +52,29 @@ def send_3x_help(short_link_url):
     }
 
     try:
-        # الطلب الأول لجلب بيانات الحساب وصاحب الرابط
-        first_res = session.post(short_link_url, headers=headers, json={}, timeout=5)
+        # الطلب الأول لجلب بيانات الحساب الأساسية
+        first_res = session.post(short_link_url, headers=headers, json={}, timeout=4)
         
-        # طباعة الاستجابة في الـ Logs للرؤية لو فيه مشكلة
-        print(f"Midas Response Status: {first_res.status_code}")
-        print(f"Midas Response Text: {first_res.text[:200]}")
-
         if first_res.status_code != 200:
-            return False, "⚠️ عذراً، الرابط غير صالح أو مرفوض من Midasbuy."
+            return False, "⚠️ عذراً، الرابط غير صالح أو منتهي!"
         
-        data = first_res.json()
-        
-        # استخراج بيانات الحساب بدقة من مسارات الاستجابة المختلفة
+        try:
+            data = first_res.json()
+        except:
+            return False, "⚠️ عذراً، استجابة الموقع غير صالحة."
+
+        # فحص كود الاستجابة من ميداسباي
+        ret_code = data.get('ret', data.get('code', 0))
+        res_text_lower = first_res.text.lower()
+
+        if str(ret_code) not in ["0", "200"] and 'success' not in res_text_lower:
+            if 'limit' in res_text_lower or 'complete' in res_text_lower or 'ended' in res_text_lower or 'max' in res_text_lower or 'finish' in res_text_lower:
+                return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
+            # لو الموقع رد بكود خطأ عام
+            if str(ret_code) != "0":
+                return False, f"⚠️ الرابط غير صالح أو تم استخدامه مسبقاً (Code: {ret_code})"
+
+        # استخراج بيانات الحساب بدقة شديدة (الاسم، الـ ID، والـ UC)
         account_info = data.get('data', {})
         if not isinstance(account_info, dict):
             account_info = data
@@ -95,14 +104,6 @@ def send_3x_help(short_link_url):
             data.get('uc') or 
             "0"
         )
-        
-        # التحقق إذا كان الرابط خلصان (30/30) بناءً على الكود أو الرسالة
-        res_text_lower = first_res.text.lower()
-        ret_code = data.get('ret', data.get('code', 0))
-        
-        if ret_code not in [0, 200, "0", "200"] and 'success' not in res_text_lower:
-            if 'limit' in res_text_lower or 'complete' in res_text_lower or 'ended' in res_text_lower or 'max' in res_text_lower:
-                return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
             
     except Exception as e:
         print(f"Error fetching player data: {e}")
@@ -110,19 +111,19 @@ def send_3x_help(short_link_url):
 
     success_count = 1
 
-    # إطلاق الـ 29 طلب الباقية بالتوازي بالسرعة القصوى
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    # إطلاق باقي اللفات بالتوازي بسرعة فائقة جداً (في ثوانٍ معدودة)
+    with ThreadPoolExecutor(max_workers=30) as executor:
         futures = [executor.submit(process_single_request, session, short_link_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
                 r_code = res_data.get('ret', res_data.get('code', 0))
-                if r_code in [0, 200, "0", "200"] or 'success' in str(res_data).lower():
+                if str(r_code) in ["0", "200"] or 'success' in str(res_data).lower():
                     success_count += 1
 
     elapsed_time = round(time.time() - start_time, 1)
 
-    # تنسيق الرسالة النهائي المظبوط تماماً زي ما طلبت
+    # شكل الرسالة المطابق تماماً للصورة المطلوبة وبنفس الترتيب
     result_msg = (
         f"تم {success_count}/30\n"
         f"• {uc_balance} . 💰\n"
@@ -316,7 +317,7 @@ def handle_messages(message):
                 bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى شراء باقة للاستمرار.")
                 return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ معالجة الرابط وجلب البيانات...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ الفوري...")
         
         success, res = send_3x_help(text.strip())
         
