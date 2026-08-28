@@ -11,10 +11,10 @@ from telebot import types
 TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TOKEN)
 
-# يوزرات الأدمن بدقة (بدون علامة @)
-ADMIN_USERNAMES = ["Vartolugaming", "S1_MBA1", "SImba_5", "YAMAC_GAMING"]
+# يوزرات الأدمن الصحيحة كما طلبتها تماماً (بدون علامة @ في القائمة للتحقق)
+ADMIN_USERNAMES = ["YAMAC_GAMING", "S1_MBA1", "SImba_5", "Vartolugaming"]
 
-# قاعدة بيانات مؤقتة لتخزين (رصيد المستخدمين، اللغة، وهل أخد هدية أول مرة ولا لأ، ورابط الدعوة)
+# قاعدة بيانات مؤقتة لتخزين (رصيد المستخدمين، اللغة، ورابط الدعوة)
 users_db = {}
 
 app = Flask('')
@@ -125,10 +125,9 @@ def send_welcome(message):
         try:
             referrer_id = int(args[1])
             if referrer_id != user_id and referrer_id in users_db:
-                # Give referrer a bonus link
                 users_db[referrer_id]['balance'] += 1
                 try:
-                    bot.send_message(referrer_id, "🎉 مبروك! صديقك انضم للبوت من خلال رابطك واشتريت، حصلت على (1 Link) هدية!")
+                    bot.send_message(referrer_id, "🎉 مبروك! صديقك انضم للبوت من خلال رابطك، حصلت على (1 Link) هدية!")
                 except:
                     pass
         except:
@@ -195,6 +194,7 @@ def handle_messages(message):
     udata = get_user_data(user_id, username)
     lang = udata['lang']
 
+    # تغيير اللغة
     if text in ['🌐 Change Language / English', '🌐 تغيير اللغة / العربية']:
         if udata['lang'] == 'ar':
             udata['lang'] = 'en'
@@ -203,6 +203,7 @@ def handle_messages(message):
         send_welcome(message)
         return
 
+    # زر شراء Links
     if text in ['🛒 شراء Links', '🛒 Buy Links']:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
         if lang == 'ar':
@@ -225,10 +226,14 @@ def handle_messages(message):
                 types.KeyboardButton('❌ Cancel')
             )
             bot.send_message(chat_id, f"🛒 **Buy Links**\n\nChoose your package:", reply_markup=markup, parse_mode="Markdown")
+        return
     
+    # إلغاء
     elif text in ['❌ إلغاء', '❌ Cancel', 'الغاء']:
         send_welcome(message)
+        return
         
+    # رصيدي
     elif text in ['💳 رصيدي', '💳 My Balance']:
         if is_admin(username):
             balance_str = "👑 أدمن (رصيد مجاني غير محدود)"
@@ -236,27 +241,34 @@ def handle_messages(message):
             balance_str = f"💳 رصيدك الحالي: {udata['balance']} Link"
             
         bot.send_message(chat_id, f"💼 **رصيد حسابك:**\n\n{balance_str}", parse_mode="Markdown")
+        return
         
+    # تواصل مع الأدمن (مدعوم بالعربي والإنجليزي تماماً)
     elif text in ['📞 تواصل مع الأدمن', '📞 Contact Admin']:
         admin_text = (
-            "📞 **تواصل مع الدعم:**\n\n"
-            "👤 @Vartolugaming\n"
+            "📞 **تواصل مع الدعم الفني والأدمنية:**\n\n"
+            "👤 @YAMAC_GAMING\n"
             "👤 @S1_MBA1\n"
             "👤 @SImba_5\n"
-            "👤 @YAMAC_GAMING\n"
+            "👤 @Vartolugaming\n\n"
+            "ارسل مشكلتك أو إثبات التحويل وسيتم الرد عليك في أقرب وقت!"
         )
         bot.send_message(chat_id, admin_text, parse_mode="Markdown")
+        return
 
+    # إرسال رابط (دعوة صديق)
     elif text in ['🔗 إرسال رابط (دعوة صديق)', '🔗 Invite Friend']:
         bot_info = bot.get_me()
         bot_link = f"https://t.me/{bot_info.username}?start={user_id}"
         invite_msg = (
             f"🔗 **رابط دعوة الأصدقاء الخاص بك:**\n\n"
             f"`{bot_link}`\n\n"
-            "🎁 شارك هذا الرابط مع أصدقائك، وعندما ينضم أحدهم ويقوم بالشراء ستحصل فوراً على **لينك هدية**!"
+            "🎁 شارك هذا الرابط مع أصدقائك، وعندما ينضم أحدهم ستحصل فوراً على **لينك هدية**!"
         )
         bot.send_message(chat_id, invite_msg, parse_mode="Markdown")
+        return
 
+    # تفاصيل الدفع والشراء
     elif 'Link' in text or 'Links' in text or 'EGP' in text or 'عدد مخصص' in text or 'Custom Amount' in text:
         payment_info = (
             f"📦 **تفاصيل طلب الشراء:**\n"
@@ -268,7 +280,9 @@ def handle_messages(message):
             "تأكد من صحة التحويل ووصول الأموال، ثم ابعت Screenshot (صورة التحويل) هنا في البوت مباشرة لإضافة اللينكات ورصيد الهدايا لحسابك!"
         )
         bot.send_message(chat_id, payment_info, parse_mode="Markdown")
+        return
 
+    # معالجة روابط ميداسباي
     elif 'midasbuy.com' in text or 'http' in text:
         if not is_admin(username):
             if udata['balance'] <= 0:
@@ -279,6 +293,7 @@ def handle_messages(message):
         msg = bot.send_message(chat_id, f"🚀 جارٍ فحص الرابط وتنفيذ اللفات...")
         success, res = send_3x_help(text.strip())
         bot.edit_message_text(f"⚡ **STARK Result:**\n\n{res}", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        return
         
     else:
         bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، ابعت رابط ميداسباي 🚀 وهفحصه وأنفذه أوتوماتيك!")
