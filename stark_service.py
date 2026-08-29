@@ -55,7 +55,7 @@ def process_single_request(url, headers):
             )
         if res.status_code == 200:
             return res.json()
-    except:
+    except Exception:
         pass
     return None
 
@@ -63,9 +63,9 @@ def send_3x_help(target_url):
     start_time = time.time()
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Connection': 'keep-alive',
