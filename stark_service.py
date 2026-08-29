@@ -33,6 +33,7 @@ HEADERS = {
         "token": "9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3",
         "userType": "hy_gameid"
     }),
+    "Cookie": "session_token=9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3",
     "Referer": "https://www.midasbuy.com/",
     "Referrer-Policy": "strict-origin-when-cross-origin"
 }
