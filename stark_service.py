@@ -6,10 +6,9 @@ bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
-    bot.reply_to(message, "🚀 جاري جلب البيانات بجلسة الحساب النشطة...")
+    bot.reply_to(message, "🚀 جاري إرسال الطلب بالبصمة الكاملة...")
     
     try:
-        # تجميع الكوكيز الحقيقية من متصفحك
         cookies = (
             "session_token=9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3; "
             "midasbuyDeviceId=0092166902720319581788028726879; "
@@ -26,6 +25,7 @@ def handle_all_messages(message):
                 'accept': 'application/json, text/plain, */*',
                 'origin': 'https://www.midasbuy.com',
                 'referer': 'https://www.midasbuy.com/eg/buy/pubgm?adtag=event.couponhelper',
+                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
                 'cookie': cookies
             },
             json={
