@@ -2,15 +2,15 @@ import telebot
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
 TOKEN = "8961573070:AAFojTKU_1EBpjxAg-M_gI2V3_t9E0dZ4io"
 bot = telebot.TeleBot(TOKEN)
 
-# استقبال أي رسالة نصية أو أمر
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     user_text = message.text
-    bot.reply_to(message, f"📥 وصلتني رسالتك: {user_text}\n⏳ جارٍ الفحص وسحب البيانات...")
+    bot.reply_to(message, f"📥 وصلتني رسالتك: {user_text}\n⏳ جارٍ إعداد المتصفح...")
     
     driver = None
     try:
@@ -20,9 +20,12 @@ def handle_all_messages(message):
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
-
-        driver = webdriver.Chrome(options=chrome_options)
+        
+        # تحديد مسار الـ chromium المنزل عبر Aptfile في ريلواي
+        chrome_options.binary_location = "/usr/bin/chromium"
+        
+        service = Service(executable_path="/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=chrome_options)
         
         driver.get("https://www.midasbuy.com/")
         time.sleep(3)
