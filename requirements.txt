@@ -3,3 +3,4 @@ requests
 selenium
 pyTelegramBotAPI
 curl_cffi
+playwright
