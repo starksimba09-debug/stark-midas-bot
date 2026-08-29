@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import re
 from curl_cffi import requests
 from flask import Flask
@@ -18,7 +19,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot with Firefox Impersonation is active!"
+    return "Stark Midas Bot with Random Delay & Fallback is active!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -37,8 +38,10 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-def process_with_session(session, url, headers):
+def process_with_delay(session, url, headers):
     try:
+        # إضافة تأخير بسيط وعشوائي بين 0.5 إلى 1.5 ثانية لكل طلب فرعي لتجنب الحظر
+        time.sleep(random.uniform(0.5, 1.5))
         res = session.get(url, headers=headers, timeout=5)
         if res.status_code != 200:
             res = session.post(url, json={}, headers=headers, timeout=5)
@@ -51,33 +54,45 @@ def process_with_session(session, url, headers):
 def send_3x_help(target_url):
     start_time = time.time()
     
-    # تجربة بصمة فايرفوكس لتخطي الحماية
-    session = requests.Session(impersonate="firefox110")
-    
+    browsers_to_try = ["firefox110", "chrome110", "safari15_3"]
+    first_res = None
+    session = None
+    used_browser = ""
+
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/110.0',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Connection': 'keep-alive',
     }
 
-    try:
-        session.get('https://www.midasbuy.com/', headers=headers, timeout=10)
-        first_res = session.get(target_url, headers=headers, timeout=10)
-        if first_res.status_code != 200:
-            first_res = session.post(target_url, json={}, headers=headers, timeout=10)
-            
-        if first_res.status_code != 200:
-            return False, f"⚠️ عذراً، الموقع رفض الاتصال (كود: {first_res.status_code})."
-        
+    for browser in browsers_to_try:
         try:
-            data = first_res.json()
+            temp_session = requests.Session(impersonate=browser)
+            temp_session.get('https://www.midasbuy.com/', headers=headers, timeout=8)
+            res = temp_session.get(target_url, headers=headers, timeout=8)
+            if res.status_code != 200:
+                res = temp_session.post(target_url, json={}, headers=headers, timeout=8)
+                
+            if res.status_code == 200:
+                try:
+                    res.json()
+                    first_res = res
+                    session = temp_session
+                    used_browser = browser
+                    break
+                except:
+                    continue
         except:
-            raw_text = first_res.text[:300]
-            return False, f"⚠️ استجابة الموقع ليست JSON.\nالرد:\n<code>{raw_text}</code>"
+            continue
 
+    if not first_res or not session:
+        return False, "⚠️ عذراً، رفض الموقع الاتصال وتجاوزت الحماية الحد الأقصى."
+
+    try:
+        data = first_res.json()
         res_text_lower = first_res.text.lower()
         if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
             return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
@@ -91,13 +106,13 @@ def send_3x_help(target_url):
         uc_balance = (account_info.get('balance') or account_info.get('uc') or data.get('balance') or "0")
             
     except Exception as e:
-        print(f"Connection Error: {e}")
-        return False, f"❌ حدث خطأ أثناء الاتصال: {str(e)}"
+        return False, f"❌ خطأ في قراءة بيانات الحساب: {str(e)}"
 
     success_count = 1
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        futures = [executor.submit(process_with_session, session, target_url, headers) for _ in range(29)]
+    # استخدام خيوط أقل وسرعة أهدأ لتفادي الحظر الآلي
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(process_with_delay, session, target_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
@@ -108,7 +123,7 @@ def send_3x_help(target_url):
     elapsed_time = round(time.time() - start_time, 1)
 
     result_msg = (
-        f"تم {success_count}/30\n"
+        f"تم {success_count}/30 (بواسطة {used_browser})\n"
         f"• {uc_balance} . 💰\n"
         f"• في {elapsed_time} ثانيه ⚙️\n"
         f"• {player_name} 🌸\n"
@@ -207,7 +222,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ إنشاء جلسة فايرفوكس آمنة وتجاوز الحماية...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بهدوء لتفادي الحماية...")
         
         success, res = send_3x_help(extracted_url)
         
@@ -222,7 +237,7 @@ def handle_messages(message):
         return
         
     else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}, أرسل رابط ميداسباي لنبدأ التنفيذ مباشرة.")
 
 def run_telegram_bot():
     while True:
