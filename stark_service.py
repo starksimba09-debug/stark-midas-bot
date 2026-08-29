@@ -19,7 +19,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot with Random Delay & Fallback is active!"
+    return "Stark Midas Bot is active with Proxy Support!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -38,15 +38,30 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-def process_with_delay(session, url, headers):
+# لستة بروكسيات مجانية مؤقتة لتوزيع الطلبات (يمكن تحديثها لاحقاً ببروكسيات مدفوعة أو متجددة أوتوماتيكياً)
+PROXIES_POOL = [
+    # يمكنك وضع بروكسيات هنا، أو تركها فارغة وسيستخدم الاتصال المباشر مع تغيير البصمات والفاصل الزمني
+]
+
+def get_random_proxy():
+    if PROXIES_POOL:
+        p = random.choice(PROXIES_POOL)
+        return {"http": p, "https": p}
+    return None
+
+def process_with_delay(target_url, headers):
     try:
-        # إضافة تأخير بسيط وعشوائي بين 0.5 إلى 1.5 ثانية لكل طلب فرعي لتجنب الحظر
-        time.sleep(random.uniform(0.5, 1.5))
-        res = session.get(url, headers=headers, timeout=5)
-        if res.status_code != 200:
-            res = session.post(url, json={}, headers=headers, timeout=5)
-        if res.status_code == 200:
-            return res.json()
+        time.sleep(random.uniform(1.0, 2.5))
+        proxy = get_random_proxy()
+        browser = random.choice(["chrome110", "chrome120"])
+        
+        # إنشاء سشن جديدة لكل طلب ببصمة وبروكسي مختلف تماماً لتفادي الحظر
+        with requests.Session(impersonate=browser, proxies=proxy) as session:
+            res = session.get(target_url, headers=headers, timeout=6)
+            if res.status_code != 200:
+                res = session.post(target_url, json={}, headers=headers, timeout=6)
+            if res.status_code == 200:
+                return res.json()
     except Exception:
         pass
     return None
@@ -54,13 +69,8 @@ def process_with_delay(session, url, headers):
 def send_3x_help(target_url):
     start_time = time.time()
     
-    browsers_to_try = ["firefox110", "chrome110", "safari15_3"]
-    first_res = None
-    session = None
-    used_browser = ""
-
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://www.midasbuy.com/',
@@ -68,51 +78,49 @@ def send_3x_help(target_url):
         'Connection': 'keep-alive',
     }
 
-    for browser in browsers_to_try:
+    # التحقق من أول طلب لإحضار بيانات اللاعب والتاكد من صلاحية الرابط
+    first_res = None
+    account_info = {}
+    
+    for _ in range(3):
         try:
-            temp_session = requests.Session(impersonate=browser)
-            temp_session.get('https://www.midasbuy.com/', headers=headers, timeout=8)
-            res = temp_session.get(target_url, headers=headers, timeout=8)
+            proxy = get_random_proxy()
+            temp_session = requests.Session(impersonate="chrome120", proxies=proxy)
+            temp_session.get('https://www.midasbuy.com/', headers=headers, timeout=6)
+            res = temp_session.get(target_url, headers=headers, timeout=6)
             if res.status_code != 200:
-                res = temp_session.post(target_url, json={}, headers=headers, timeout=8)
+                res = temp_session.post(target_url, json={}, headers=headers, timeout=6)
                 
             if res.status_code == 200:
-                try:
-                    res.json()
-                    first_res = res
-                    session = temp_session
-                    used_browser = browser
-                    break
-                except:
-                    continue
+                data = res.json()
+                res_text_lower = res.text.lower()
+                if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
+                    return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
+                
+                first_res = data
+                break
         except:
             continue
 
-    if not first_res or not session:
+    if not first_res:
         return False, "⚠️ عذراً، رفض الموقع الاتصال وتجاوزت الحماية الحد الأقصى."
 
     try:
-        data = first_res.json()
-        res_text_lower = first_res.text.lower()
-        if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
-            return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
-
-        account_info = data.get('data', {})
+        account_info = first_res.get('data', {})
         if not isinstance(account_info, dict):
-            account_info = data
+            account_info = first_res
 
-        player_name = (account_info.get('roleName') or account_info.get('nickname') or data.get('roleName') or "لاعب PUBG")
-        player_id = (account_info.get('roleId') or account_info.get('uid') or data.get('roleId') or "غير معروف")
-        uc_balance = (account_info.get('balance') or account_info.get('uc') or data.get('balance') or "0")
-            
+        player_name = (account_info.get('roleName') or account_info.get('nickname') or first_res.get('roleName') or "لاعب PUBG")
+        player_id = (account_info.get('roleId') or account_info.get('uid') or first_res.get('roleId') or "غير معروف")
+        uc_balance = (account_info.get('balance') or account_info.get('uc') or first_res.get('balance') or "0")
     except Exception as e:
-        return False, f"❌ خطأ في قراءة بيانات الحساب: {str(e)}"
+        player_name, player_id, uc_balance = "لاعب PUBG", "غير معروف", "0"
 
     success_count = 1
 
-    # استخدام خيوط أقل وسرعة أهدأ لتفادي الحظر الآلي
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_with_delay, session, target_url, headers) for _ in range(29)]
+    # تنفيذ الـ 29 طلب المتبقية بتوزيعها على خيوط متعددة بفاصل زمني وبصمات متغيرة
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(process_with_delay, target_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
@@ -123,11 +131,11 @@ def send_3x_help(target_url):
     elapsed_time = round(time.time() - start_time, 1)
 
     result_msg = (
-        f"تم {success_count}/30 (بواسطة {used_browser})\n"
-        f"• {uc_balance} . 💰\n"
-        f"• في {elapsed_time} ثانيه ⚙️\n"
-        f"• {player_name} 🌸\n"
-        f"• {player_id} 🆔"
+        f"تم {success_count}/30 بنجاح 🚀\n"
+        f"• الرصيد: {uc_balance} 💰\n"
+        f"• الوقت: {elapsed_time} ثانيه ⚙️\n"
+        f"• الاسم: {player_name} 🌸\n"
+        f"• الـ ID: {player_id} 🆔"
     )
     return True, result_msg
 
@@ -222,7 +230,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بهدوء لتفادي الحماية...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بنظام التوزيع الذكي لتفادي الحماية...")
         
         success, res = send_3x_help(extracted_url)
         
