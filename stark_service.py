@@ -1,7 +1,7 @@
 import os
 import time
 import re
-import requests
+from curl_cffi import requests
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +18,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active and running 24/7!"
+    return "Stark Midas Bot with curl_cffi is active and running 24/7!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -39,14 +39,16 @@ def extract_url(text):
 
 def process_single_request(url, headers):
     try:
-        with requests.Session() as s:
-            # محاولة طلب GET ثم POST لضمان نجاح اللفة
-            res = s.get(url, headers=headers, timeout=3, verify=False)
-            if res.status_code != 200:
-                res = s.post(url, headers=headers, json={}, timeout=3, verify=False)
-            
-            if res.status_code == 200:
-                return res.json()
+        # استخدام curl_cffi للتخطي الفعال
+        res = requests.post(
+            url, 
+            json={}, 
+            impersonate="chrome110",
+            headers=headers, 
+            timeout=5
+        )
+        if res.status_code == 200:
+            return res.json()
     except:
         pass
     return None
@@ -55,23 +57,23 @@ def send_3x_help(target_url):
     start_time = time.time()
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-        'Referer': 'https://www.midasbuy.com/midasbuy/ot/ug/buy/pubgm',
-        'Origin': 'https://www.midasbuy.com',
-        'Connection': 'keep-alive',
-        'X-Requested-With': 'XMLHttpRequest'
+        'Content-Type': 'application/json',
+        'Referer': 'https://www.midasbuy.com/',
+        'Accept': 'application/json, text/plain, */*'
     }
 
     try:
-        # فحص الرابط الأول وجلب بيانات الحساب
-        first_res = requests.get(target_url, headers=headers, timeout=5, verify=False)
-        if first_res.status_code != 200:
-            first_res = requests.post(target_url, headers=headers, json={}, timeout=5, verify=False)
+        # فحص أول طلب باستخدام curl_cffi وبصمة المتصفح لتخطي الحماية
+        first_res = requests.post(
+            target_url, 
+            json={}, 
+            impersonate="chrome110",
+            headers=headers, 
+            timeout=8
+        )
             
         if first_res.status_code != 200:
-            return False, f"⚠️ عذراً، الموقع رفض الاتصال أو الرابط غير صالح."
+            return False, f"⚠️ عذراً، الموقع رفض الاتصال أو حظر الطلب (كود: {first_res.status_code})."
         
         try:
             data = first_res.json()
@@ -92,12 +94,12 @@ def send_3x_help(target_url):
             
     except Exception as e:
         print(f"Connection Error: {e}")
-        return False, "❌ حدث خطأ أثناء الاتصال بموقع ميداسباي."
+        return False, f"❌ حدث خطأ أثناء الاتصال عبر السيرفر: {str(e)}"
 
     success_count = 1
 
-    # تشغيل الـ 29 طلب الباقين بالتوازي السريع
-    with ThreadPoolExecutor(max_workers=30) as executor:
+    # تشغيل الطلبات المتوازية بالـ curl_cffi لتجنب حظر الكلاود فلير
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_single_request, target_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
@@ -154,13 +156,13 @@ def send_welcome(message):
         f"{balance_display}\n"
         "🔗 1 Link = 30 Invite\n"
         "🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها + لينك هدية عند دعوة صديق!\n\n"
-        "اختر الخدمة المطلوبة من الأزرار بالأسفل 👇"
+        "اختر الخدمة المطلوبة أو أرسل الآيدي/الرابط مباشرة 👇"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard(), parse_mode="HTML")
 
 @bot.message_handler(func=lambda message: True)
 def handle_messages(message):
-    text = message.text
+    text = message.text.strip()
     chat_id = message.chat.id
     user_id = message.from_user.id
     username = message.from_user.username
@@ -202,16 +204,43 @@ def handle_messages(message):
         bot.send_message(chat_id, "📞 **اختر الأدمن للمراسلة المباشرة:**", reply_markup=admin_markup, parse_mode="Markdown")
         return
 
-    # فحص إذا كانت الرسالة تحتوي على رابط ميداسباي
-    extracted_url = extract_url(text)
-    if extracted_url:
+    # فحص إذا كان الإدخال عبارة عن آيدي (أرقام فقط) أو رابط ميداسباي
+    target_url = extract_url(text)
+    if not target_url and text.isdigit():
+        # إذا أرسل آيدي مباشر، نقوم بتحويله لرابط ميداسباي الافتراضي للفحص
+        target_url = f"https://www.midasbuy.com/midasbuy/ot/buy/pubg"
+
+    if target_url or text.isdigit():
         if not is_admin(username) and udata['balance'] <= 0:
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ الفوري...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ وتجاوز الحماية...")
         
-        success, res = send_3x_help(extracted_url)
+        # إذا كان آيدي مباشر نبعث بيانات الـ json بالآيدي، وإذا كان رابط نمرره
+        if text.isdigit():
+            # معالجة الآيدي المباشر عبر curl_cffi
+            try:
+                api_url = "https://www.midasbuy.com/midasbuy/ot/buy/pubg"
+                response = requests.post(
+                    api_url, 
+                    json={"playerId": text},
+                    impersonate="chrome110",
+                    headers={"Content-Type": "application/json", "Referer": "https://www.midasbuy.com/"},
+                    timeout=15
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    res = f"🟢 استجابة السيرفر للآيدي {text}:\n<code>{data}</code>"
+                    success = True
+                else:
+                    success = False
+                    res = f"⚠️ رد الحماية بكود: {response.status_code}"
+            except Exception as e:
+                success = False
+                res = f"❌ خطأ: {str(e)}"
+        else:
+            success, res = send_3x_help(target_url)
         
         if not success:
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
@@ -220,11 +249,11 @@ def handle_messages(message):
         if not is_admin(username):
             udata['balance'] -= 1
 
-        bot.edit_message_text(res, chat_id=chat_id, message_id=msg.message_id)
+        bot.edit_message_text(res, chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML" if text.isdigit() else None)
         return
         
     else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط/آيدي ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
 
 def run_telegram_bot():
     while True:
