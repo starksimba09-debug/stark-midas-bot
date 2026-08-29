@@ -33,7 +33,7 @@ HEADERS = {
         "token": "9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3",
         "userType": "hy_gameid"
     }),
-    "Cookie": "session_token=9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3",
+    "Cookie": "session_token=9ca8360c3d76626452367a14ea5060b786e9cc3a2979e6c04f746c9ae03627b3; midasbuyDeviceId=0092166902720319581788028726879; forterToken=af9908bdb7444b4694c34638e4973aa6_1788034653942__UDF43-m4_27ck_",
     "Referer": "https://www.midasbuy.com/",
     "Referrer-Policy": "strict-origin-when-cross-origin"
 }
@@ -68,7 +68,6 @@ def check_midasbuy(message):
         bot.reply_to(message, "جاري إرسال الطلب إلى Midasbuy...")
         response = requests.post(MIDAS_URL, headers=HEADERS, json=PAYLOAD)
         
-        # طبع الاستجابة في الـ Console عشان نراجعها
         print("Response Code:", response.status_code)
         print("Response Text:", response.text)
         
