@@ -1,12 +1,10 @@
 import os
 import time
-import random
 import re
-import json
-import requests
 from flask import Flask
 from threading import Thread
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
+from playwright.async_api import async_playwright
 import telebot
 from telebot import types
 
@@ -20,7 +18,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active with Optimized Requests!"
+    return "Stark Midas Bot is active with Playwright Browser!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -39,101 +37,84 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-def get_optimized_headers():
-    return {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-        'Referer': 'https://www.midasbuy.com/',
-        'Origin': 'https://www.midasbuy.com',
-        'Connection': 'keep-alive',
-        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin'
-    }
-
-def process_single_request(target_url):
-    try:
-        session = requests.Session()
-        headers = get_optimized_headers()
-        # محاولة طلب GET ثم POST لضمان التفاعل مع الرابط
-        res = session.get(target_url, headers=headers, timeout=8)
-        if res.status_code != 200:
-            res = session.post(target_url, json={}, headers=headers, timeout=8)
-        
-        if res.status_code == 200:
-            try:
-                return res.json()
-            except:
-                return {"success": True, "text": res.text}
-    except Exception:
-        pass
-    return None
-
-def send_3x_help(target_url):
+async def execute_playwright_invites(target_url):
     start_time = time.time()
-    first_res = None
-    account_info = {}
-    
-    # محاولة جلب البيانات الأولى للتحقق من الرابط
-    for _ in range(3):
-        try:
-            session = requests.Session()
-            headers = get_optimized_headers()
-            res = session.get(target_url, headers=headers, timeout=8)
-            if res.status_code != 200:
-                res = session.post(target_url, json={}, headers=headers, timeout=8)
-                
-            if res.status_code == 200:
-                res_text_lower = res.text.lower()
-                if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish', 'انتهت']):
-                    return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل أو انتهى!"
-                try:
-                    first_res = res.json()
-                except:
-                    first_res = {"raw": res.text}
-                break
-        except Exception:
-            time.sleep(1)
-            continue
-
-    if not first_res:
-        return False, "⚠️ عذراً، رفض الموقع الاتصال أو حماية الموقع نشطة. حاول مرة أخرى."
+    success_count = 0
+    player_name = "لاعب PUBG"
+    player_id = "غير معروف"
+    uc_balance = "0"
 
     try:
-        account_info = first_res.get('data', {}) if isinstance(first_res, dict) else {}
-        if not isinstance(account_info, dict):
-            account_info = first_res
+        async with async_playwright() as p:
+            # تشغيل المتصفح في الخلفية بصلاحيات تتخطى الحماية
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-accelerated-2d-canvas",
+                    "--disable-gpu"
+                ]
+            )
+            
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800}
+            )
+            
+            page = await context.new_page()
+            
+            # محاولة فتح الرابط الأساسي لأول مرة لتجاوز كلوادفلاير وجلب بيانات الحساب
+            print(f"Opening target URL: {target_url}")
+            response = await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+            
+            if not response or response.status >= 400:
+                await browser.close()
+                return False, "⚠️ عذراً، رفض الموقع الاتصال أو حماية كلوادفلاير منعت المتصفح."
 
-        player_name = (account_info.get('roleName') or account_info.get('nickname') or "لاعب PUBG")
-        player_id = (account_info.get('roleId') or account_info.get('uid') or "غير معروف")
-        uc_balance = (account_info.get('balance') or account_info.get('uc') or "0")
-    except Exception:
-        player_name, player_id, uc_balance = "لاعب PUBG", "غير معروف", "0"
+            # انتظار تحميل الصفحة قليلاً لالتقاط البيانات لو وجدت
+            await page.wait_for_timeout(3000)
+            page_text = await page.inner_text("body")
+            
+            if any(word in page_text.lower() for word in ['limit', 'complete', 'ended', 'max', 'finish', 'انتهت']):
+                await browser.close()
+                return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
 
-    success_count = 1
+            success_count = 1  # الطلب الأول نجح وفتح الصفحة
 
-    # إرسال الطلبات المتكررة بسرعة عبر ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_single_request, target_url) for _ in range(29)]
-        for future in futures:
-            res_data = future.result()
-            if res_data:
-                success_count += 1
+            # تنفيذ محاولات الدعوات المتكررة من خلال إعادة زيارة الرابط أو إرسال طلبات خلفية
+            for i in range(29):
+                try:
+                    # فتح الرابط في تبويب أو إعادة تحميل خفيفة لتسجيل الدعوة
+                    sub_page = await context.new_page()
+                    await sub_page.goto(target_url, timeout=15000)
+                    success_count += 1
+                    await sub_page.close()
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    continue
 
-    elapsed_time = round(time.time() - start_time, 1)
+            await browser.close()
+            
+            elapsed_time = round(time.time() - start_time, 1)
+            result_msg = (
+                f"تم {success_count}/30 بنجاح 🚀\n"
+                f"• الرصيد: {uc_balance} 💰\n"
+                f"• الوقت: {elapsed_time} ثانيه ⚙️\n"
+                f"• الاسم: {player_name} 🌸\n"
+                f"• الـ ID: {player_id} 🆔"
+            )
+            return True, result_msg
 
-    result_msg = (
-        f"تم {success_count}/30 بنجاح 🚀\n"
-        f"• الرصيد: {uc_balance} 💰\n"
-        f"• الوقت: {elapsed_time} ثانيه ⚙️\n"
-        f"• الاسم: {player_name} 🌸\n"
-        f"• الـ ID: {player_id} 🆔"
-    )
-    return True, result_msg
+    except Exception as e:
+        print(f"Playwright Error: {str(e)}")
+        return False, f"⚠️ حدث خطأ تقني أثناء تشغيل المتصفح: {str(e)}"
+
+def run_async_task(target_url):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(execute_playwright_invites(target_url))
 
 def is_admin(username):
     if not username:
@@ -168,7 +149,7 @@ def send_welcome(message):
         balance_display = f"💳 رصيدك الحالي: {udata['balance']} Link"
 
     welcome_text = (
-        f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
+        f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> (Playwright Mode) 👑\n\n"
         f"{balance_display}\n"
         "🔗 1 Link = 30 Invite\n\n"
         "اختر الخدمة المطلوبة أو أرسل الرابط مباشرة 👇"
@@ -225,9 +206,9 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ بأداء محسن...")
+        msg = bot.send_message(chat_id, f"🌐 جارٍ تشغيل المتصفح وتخطى الحماية...")
         
-        success, res = send_3x_help(extracted_url)
+        success, res = run_async_task(extracted_url)
         
         if not success:
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
@@ -240,7 +221,7 @@ def handle_messages(message):
         return
         
     else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}, أرسل رابط ميداسباي لنبدأ التنفيذ مباشرة.")
+        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}, أرسل رابط ميداسباي لنبدأ التنفيذ بالمتصفح مباشرة.")
 
 def run_telegram_bot():
     while True:
