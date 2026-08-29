@@ -6,7 +6,7 @@ import telebot
 TELEGRAM_TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# بيانات Midasbuy اللي طلعناها
+# بيانات Midasbuy المُحدثة
 MIDAS_URL = "https://pagedooapi.midasbuy.com/api/CallMpgo/osmidas/dd_help_model/HelpInfoListByUserId"
 
 HEADERS = {
@@ -20,8 +20,8 @@ HEADERS = {
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-site",
-    "traceparent": "00-8b269c4db8aab8b19c5cc58d73933158-a2d02816a5a9a78c-01",
-    "x-request-id": "-Qbl2QjmlJ0AjTGSH892U-0",
+    "traceparent": "00-b3ca8871571ce9948db83fb70c1450f3-97bfd81da2c55d11-01",
+    "x-request-id": "5lhAd-bY-oxCIviKiFl3l-0",
     "x-tencent-login-check": json.dumps({
         "accountType": "midasbuy",
         "appid": "123123",
@@ -78,7 +78,7 @@ def check_midasbuy(message):
                 pretty_result = pretty_result[:4000]
             bot.reply_to(message, f"✅ تمت العملية بنجاح:\n\n`{pretty_result}`", parse_mode="Markdown")
         else:
-            bot.reply_to(message, f"⚠️ حدث خطأ في الاستجابة، كود الحالة: {response.status_code}")
+            bot.reply_to(message, f"⚠️ حدث خطأ في الاستجابة، كود الحالة: {response.status_code}\n`{response.text}`", parse_mode="Markdown")
             
     except Exception as e:
         bot.reply_to(message, f"❌ حدث خطأ أثناء الاتصال: {str(e)}")
