@@ -3,7 +3,7 @@ import time
 import random
 import re
 import json
-from curl_cffi import requests
+import requests
 from flask import Flask
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active with Smart Impersonation!"
+    return "Stark Midas Bot is active with Optimized Requests!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -39,44 +39,36 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-def get_random_headers():
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.6 Safari/605.1.15',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
-    ]
+def get_optimized_headers():
     return {
-        'User-Agent': random.choice(user_agents),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Connection': 'keep-alive',
+        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
         'Sec-Fetch-Dest': 'empty',
         'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache'
+        'Sec-Fetch-Site': 'same-origin'
     }
 
-def process_with_delay(target_url):
+def process_single_request(target_url):
     try:
-        # تأخير زمني عشوائي لتجنب الحظر
-        time.sleep(random.uniform(0.5, 3.0)) 
+        session = requests.Session()
+        headers = get_optimized_headers()
+        # محاولة طلب GET ثم POST لضمان التفاعل مع الرابط
+        res = session.get(target_url, headers=headers, timeout=8)
+        if res.status_code != 200:
+            res = session.post(target_url, json={}, headers=headers, timeout=8)
         
-        # تغيير بصمة المتصفح في كل طلب
-        browser = random.choice(["chrome110", "chrome116", "chrome120", "edge101", "safari15_3"])
-        headers = get_random_headers()
-        
-        with requests.Session(impersonate=browser) as session:
-            res = session.get(target_url, headers=headers, timeout=10)
-            if res.status_code != 200:
-                time.sleep(random.uniform(0.5, 1.0))
-                res = session.post(target_url, json={}, headers=headers, timeout=10)
-            if res.status_code == 200:
+        if res.status_code == 200:
+            try:
                 return res.json()
+            except:
+                return {"success": True, "text": res.text}
     except Exception:
         pass
     return None
@@ -86,55 +78,51 @@ def send_3x_help(target_url):
     first_res = None
     account_info = {}
     
-    # محاولة جلب البيانات الأساسية 4 مرات لتفادي فشل الاتصال الأولي
-    for _ in range(4):
+    # محاولة جلب البيانات الأولى للتحقق من الرابط
+    for _ in range(3):
         try:
-            browser = random.choice(["chrome120", "safari15_3"])
-            headers = get_random_headers()
-            
-            with requests.Session(impersonate=browser) as temp_session:
-                res = temp_session.get(target_url, headers=headers, timeout=10)
-                if res.status_code != 200:
-                    time.sleep(1)
-                    res = temp_session.post(target_url, json={}, headers=headers, timeout=10)
-                    
-                if res.status_code == 200:
-                    data = res.json()
-                    res_text_lower = res.text.lower()
-                    if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
-                        return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
-                    
-                    first_res = data
-                    break
+            session = requests.Session()
+            headers = get_optimized_headers()
+            res = session.get(target_url, headers=headers, timeout=8)
+            if res.status_code != 200:
+                res = session.post(target_url, json={}, headers=headers, timeout=8)
+                
+            if res.status_code == 200:
+                res_text_lower = res.text.lower()
+                if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish', 'انتهت']):
+                    return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل أو انتهى!"
+                try:
+                    first_res = res.json()
+                except:
+                    first_res = {"raw": res.text}
+                break
         except Exception:
-            time.sleep(1.5)
+            time.sleep(1)
             continue
 
     if not first_res:
-        return False, "⚠️ عذراً، رفض الموقع الاتصال وتجاوزت الحماية الحد الأقصى. حاول مرة أخرى بعد قليل."
+        return False, "⚠️ عذراً، رفض الموقع الاتصال أو حماية الموقع نشطة. حاول مرة أخرى."
 
     try:
-        account_info = first_res.get('data', {})
+        account_info = first_res.get('data', {}) if isinstance(first_res, dict) else {}
         if not isinstance(account_info, dict):
             account_info = first_res
 
-        player_name = (account_info.get('roleName') or account_info.get('nickname') or first_res.get('roleName') or "لاعب PUBG")
-        player_id = (account_info.get('roleId') or account_info.get('uid') or first_res.get('roleId') or "غير معروف")
-        uc_balance = (account_info.get('balance') or account_info.get('uc') or first_res.get('balance') or "0")
+        player_name = (account_info.get('roleName') or account_info.get('nickname') or "لاعب PUBG")
+        player_id = (account_info.get('roleId') or account_info.get('uid') or "غير معروف")
+        uc_balance = (account_info.get('balance') or account_info.get('uc') or "0")
     except Exception:
         player_name, player_id, uc_balance = "لاعب PUBG", "غير معروف", "0"
 
     success_count = 1
 
-    # تقليل عدد الـ Workers لـ 3 لتقليل الضغط على السيرفر في نفس اللحظة
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(process_with_delay, target_url) for _ in range(29)]
+    # إرسال الطلبات المتكررة بسرعة عبر ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(process_single_request, target_url) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
-                r_code = res_data.get('ret', res_data.get('code', -1))
-                if str(r_code) in ["0", "200"] or 'success' in str(res_data).lower():
-                    success_count += 1
+                success_count += 1
 
     elapsed_time = round(time.time() - start_time, 1)
 
@@ -237,7 +225,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة متجاوزاً الحماية...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ التنفيذ بأداء محسن...")
         
         success, res = send_3x_help(extracted_url)
         
