@@ -3,17 +3,15 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
-# توكن البوت الخاص بك
 TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['check'])
 def check_midas(message):
-    bot.reply_to(message, "جاري تشغيل المتصفح الخفي لتخطى الحماية وسحب البيانات...")
+    bot.reply_to(message, "⏳ جارٍ بدء تشغيل المتصفح...")
     
     driver = None
     try:
-        # إعدادات المتصفح الخفي (Headless Chrome) ليعمل بكفاءة على السيرفر
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
@@ -22,14 +20,14 @@ def check_midas(message):
         chrome_options.add_argument("--window-size=1920,1080")
         chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
 
-        # تشغيل المتصفح
+        bot.reply_to(message, "🌐 جارٍ فتح متصفح Chromium...")
         driver = webdriver.Chrome(options=chrome_options)
         
-        # الخطوة 1: الدخول لموقع Midasbuy الأساسي لتوليد بصمة المتصفح والكوكيز الحقيقية
+        bot.reply_to(message, "🔗 جارٍ الدخول لموقع Midasbuy...")
         driver.get("https://www.midasbuy.com/")
         time.sleep(3)
         
-        # الخطوة 2: إرسال طلب الـ API من داخل جلسة المتصفح الحية لتجاوز حماية الـ 567
+        bot.reply_to(message, "⚡ جارٍ سحب البيانات بالبصمة...")
         script = """
         return fetch('https://pagedooapi.midasbuy.com/api/CallMpgo/osmidas/dd_help_model/HelpInfoListByUserId', {
             method: 'POST',
@@ -62,16 +60,16 @@ def check_midas(message):
         response_text = driver.execute_script(script)
         
         if response_text:
-            bot.reply_to(message, f"تم بنجاح! النتيجة:\n{response_text[:800]}")
+            bot.reply_to(message, f"✅ تم بنجاح! النتيجة:\n{response_text[:800]}")
         else:
-            bot.reply_to(message, "فشل جلب الاستجابة من المتصفح.")
+            bot.reply_to(message, "❌ فشل جلب الاستجابة (فارغة).")
 
     except Exception as e:
-        bot.reply_to(message, f"حدث خطأ أثناء التشغيل: {str(e)}")
+        bot.reply_to(message, f"❌ حدث خطأ:\n{str(e)}")
         
     finally:
         if driver:
             driver.quit()
 
-print("Bot with Selenium is running...")
+print("Bot is ready and listening...")
 bot.infinity_polling()
