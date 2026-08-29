@@ -3,14 +3,14 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 TOKEN = "8961573070:AAFojTKU_1EBpjxAg-M_gI2V3_t9E0dZ4io"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
-    user_text = message.text
-    bot.reply_to(message, f"📥 وصلتني رسالتك: {user_text}\n⏳ جارٍ إعداد المتصفح...")
+    bot.reply_to(message, "⏳ جارٍ تجهيز المتصفح عبر الدرايفر التلقائي...")
     
     driver = None
     try:
@@ -20,11 +20,10 @@ def handle_all_messages(message):
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
-        
-        # تحديد مسار الـ chromium المنزل عبر Aptfile في ريلواي
-        chrome_options.binary_location = "/usr/bin/chromium"
-        
-        service = Service(executable_path="/usr/bin/chromedriver")
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36")
+
+        # استخدام webdriver-manager لتثبيت وتشغيل الدرايفر تلقائياً بدون أخطاء مسارات
+        service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
         driver.get("https://www.midasbuy.com/")
