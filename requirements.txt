@@ -1,7 +1,2 @@
-Flask
-requests
-selenium
 pyTelegramBotAPI
-curl_cffi
 playwright
-webdriver-manager
