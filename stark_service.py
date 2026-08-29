@@ -2,11 +2,9 @@ import requests
 import json
 import telebot
 
-# توكن بوت تليجرام الخاص بـ Stark-midas-bot
 TELEGRAM_TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# بيانات Midasbuy المُحدثة
 MIDAS_URL = "https://pagedooapi.midasbuy.com/api/CallMpgo/osmidas/dd_help_model/HelpInfoListByUserId"
 
 HEADERS = {
@@ -59,32 +57,31 @@ PAYLOAD = {
     }
 }
 
-# أمر البداية في تيليجرام
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً بك يا بطل في Stark-midas-bot! البوت جاهز. اكتب /check لفحص حالة الحدث والدعوات أوتوماتيك.")
+    bot.reply_to(message, "أهلاً بك يا بطل في Stark-midas-bot! البوت جاهز. اكتب /check للفحص.")
 
-# أمر فحص الحدث وجلب النتيجة
 @bot.message_handler(commands=['check'])
 def check_midasbuy(message):
     try:
-        bot.reply_to(message, "جاري إرسال الطلب إلى Midasbuy ومعالجة البيانات...")
+        bot.reply_to(message, "جاري إرسال الطلب إلى Midasbuy...")
         response = requests.post(MIDAS_URL, headers=HEADERS, json=PAYLOAD)
+        
+        # طبع الاستجابة في الـ Console عشان نراجعها
+        print("Response Code:", response.status_code)
+        print("Response Text:", response.text)
         
         if response.status_code == 200:
             data = response.json()
             pretty_result = json.dumps(data, indent=2, ensure_ascii=False)
-            
-            # تقليص النص بذكاء ليتوافق مع حدود تليجرام (أقصى حد آمن حوالي 3500 حرف)
             if len(pretty_result) > 3500:
-                pretty_result = pretty_result[:3500] + "\n\n... [تم اقتطاع جزء من النتائج لطولها]"
-                
+                pretty_result = pretty_result[:3500] + "\n\n... [تم اقتطاع جزء]"
             bot.reply_to(message, f"✅ تمت العملية بنجاح:\n\n```json\n{pretty_result}\n```", parse_mode="Markdown")
         else:
-            bot.reply_to(message, f"⚠️ حدث خطأ في الاستجابة، كود الحالة: {response.status_code}")
+            bot.reply_to(message, f"⚠️ خطأ من السيرفر: {response.status_code}\nالتفاصيل: `{response.text[:200]}`", parse_mode="Markdown")
             
     except Exception as e:
-        bot.reply_to(message, f"❌ حدث خطأ أثناء الاتصال: {str(e)}")
+        bot.reply_to(message, f"❌ خطأ اتصال: {str(e)}")
 
 if __name__ == "__main__":
     print("Stark-midas-bot يعمل الآن بنجاح...")
