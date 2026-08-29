@@ -20,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active with Manual Proxy Pool!"
+    return "Stark Midas Bot is active with Smart Impersonation!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -39,101 +39,42 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-# لستة البروكسيات الحقيقية المحدثة لتخطي حظر كلاود فلير
-PROXIES_POOL = [
-    "http://139.255.74.124:8080",
-    "http://14.161.10.46:80",
-    "http://165.101.230.76:8080",
-    "http://66.135.27.9:443",
-    "http://192.252.220.89:4145",
-    "http://91.247.250.215:4145",
-    "http://47.82.80.23:1011",
-    "http://126.209.110.96:8087",
-    "http://103.125.17.106:8080",
-    "http://158.101.89.163:3123",
-    "http://208.67.28.27:58090",
-    "http://144.124.232.204:443",
-    "http://171.245.89.241:12328",
-    "http://118.179.167.238:55",
-    "http://87.106.120.212:3128",
-    "http://38.191.194.43:999",
-    "http://92.112.125.102:8443",
-    "http://115.127.112.178:1080",
-    "http://24.249.199.4:4145",
-    "http://123.138.24.112:8800",
-    "http://89.251.21.45:8080",
-    "http://176.12.72.62:3128",
-    "http://107.149.141.54:5001",
-    "http://5.129.214.191:8080",
-    "http://186.227.196.104:3128",
-    "http://23.143.160.193:999",
-    "http://160.250.54.9:9000",
-    "http://145.220.226.102:8080",
-    "http://107.173.182.177:30368",
-    "http://218.95.39.108:59999",
-    "http://38.46.233.245:3127",
-    "http://68.1.210.163:4145",
-    "http://171.236.89.87:1080",
-    "http://47.237.110.50:1080",
-    "http://45.174.56.21:999",
-    "http://192.3.20.150:3128",
-    "http://223.111.182.16:1552",
-    "http://103.112.163.131:8080",
-    "http://178.252.165.226:1080",
-    "http://51.222.13.193:10084",
-    "http://98.190.239.3:4145",
-    "http://198.98.57.207:1080",
-    "http://145.220.226.174:8080",
-    "http://168.138.219.12:8081",
-    "http://134.249.86.47:8080",
-    "http://200.121.48.195:999",
-    "http://138.118.107.29:999",
-    "http://38.58.117.72:8080",
-    "http://72.37.216.68:4145",
-    "http://162.214.74.29:8085",
-    "http://120.28.169.31:5050",
-    "http://145.220.226.54:8080",
-    "http://212.3.127.242:10801",
-    "http://103.97.141.40:8080",
-    "http://43.242.227.10:9053",
-    "http://38.190.1.70:1085",
-    "http://192.145.228.209:8082",
-    "http://180.191.14.210:8081",
-    "http://197.248.16.109:8080",
-    "http://38.76.196.46:9050",
-    "http://106.51.185.233:8080",
-    "http://124.105.79.237:8080",
-    "http://116.107.186.72:1080",
-    "http://98.178.72.30:4145",
-    "http://101.255.32.41:8080",
-    "http://185.157.111.3:5678",
-    "http://39.129.25.66:8060",
-    "http://157.254.221.38:20002",
-    "http://88.204.134.234:1080",
-    "http://66.135.16.53:80",
-    "http://37.187.109.70:10111",
-    "http://98.170.57.249:4145",
-    "http://154.88.189.21:5678",
-    "http://190.131.198.77:80",
-    "http://94.23.218.74:10808"
-]
+def get_random_headers():
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6.6 Safari/605.1.15',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
+    ]
+    return {
+        'User-Agent': random.choice(user_agents),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+        'Referer': 'https://www.midasbuy.com/',
+        'Origin': 'https://www.midasbuy.com',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache'
+    }
 
-def get_random_proxy():
-    if PROXIES_POOL:
-        p = random.choice(PROXIES_POOL)
-        return {"http": p, "https": p}
-    return None
-
-def process_with_delay(target_url, headers):
+def process_with_delay(target_url):
     try:
-        time.sleep(random.uniform(0.5, 1.5))
-        proxy = get_random_proxy()
-        browser = random.choice(["chrome110", "chrome120"])
+        # تأخير زمني عشوائي لتجنب الحظر
+        time.sleep(random.uniform(0.5, 3.0)) 
         
-        with requests.Session(impersonate=browser, proxies=proxy) as session:
-            res = session.get(target_url, headers=headers, timeout=5)
+        # تغيير بصمة المتصفح في كل طلب
+        browser = random.choice(["chrome110", "chrome116", "chrome120", "edge101", "safari15_3"])
+        headers = get_random_headers()
+        
+        with requests.Session(impersonate=browser) as session:
+            res = session.get(target_url, headers=headers, timeout=10)
             if res.status_code != 200:
-                res = session.post(target_url, json={}, headers=headers, timeout=5)
+                time.sleep(random.uniform(0.5, 1.0))
+                res = session.post(target_url, json={}, headers=headers, timeout=10)
             if res.status_code == 200:
                 return res.json()
     except Exception:
@@ -142,40 +83,35 @@ def process_with_delay(target_url, headers):
 
 def send_3x_help(target_url):
     start_time = time.time()
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.midasbuy.com/',
-        'Origin': 'https://www.midasbuy.com',
-        'Connection': 'keep-alive',
-    }
-
     first_res = None
     account_info = {}
     
-    for _ in range(3):
+    # محاولة جلب البيانات الأساسية 4 مرات لتفادي فشل الاتصال الأولي
+    for _ in range(4):
         try:
-            proxy = get_random_proxy()
-            temp_session = requests.Session(impersonate="chrome120", proxies=proxy)
-            res = temp_session.get(target_url, headers=headers, timeout=5)
-            if res.status_code != 200:
-                res = temp_session.post(target_url, json={}, headers=headers, timeout=5)
-                
-            if res.status_code == 200:
-                data = res.json()
-                res_text_lower = res.text.lower()
-                if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
-                    return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
-                
-                first_res = data
-                break
-        except:
+            browser = random.choice(["chrome120", "safari15_3"])
+            headers = get_random_headers()
+            
+            with requests.Session(impersonate=browser) as temp_session:
+                res = temp_session.get(target_url, headers=headers, timeout=10)
+                if res.status_code != 200:
+                    time.sleep(1)
+                    res = temp_session.post(target_url, json={}, headers=headers, timeout=10)
+                    
+                if res.status_code == 200:
+                    data = res.json()
+                    res_text_lower = res.text.lower()
+                    if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
+                        return False, "⚠️ عذراً، هذا الرابط مكتمل بالفعل (خلصان 30/30)!"
+                    
+                    first_res = data
+                    break
+        except Exception:
+            time.sleep(1.5)
             continue
 
     if not first_res:
-        return False, "⚠️ عذراً، رفض الموقع الاتصال وتجاوزت الحماية الحد الأقصى."
+        return False, "⚠️ عذراً، رفض الموقع الاتصال وتجاوزت الحماية الحد الأقصى. حاول مرة أخرى بعد قليل."
 
     try:
         account_info = first_res.get('data', {})
@@ -190,8 +126,9 @@ def send_3x_help(target_url):
 
     success_count = 1
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(process_with_delay, target_url, headers) for _ in range(29)]
+    # تقليل عدد الـ Workers لـ 3 لتقليل الضغط على السيرفر في نفس اللحظة
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(process_with_delay, target_url) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
@@ -300,7 +237,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بنظام البروكسيات المتعددة...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة متجاوزاً الحماية...")
         
         success, res = send_3x_help(extracted_url)
         
