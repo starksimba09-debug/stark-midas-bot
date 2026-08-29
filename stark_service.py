@@ -2,6 +2,7 @@ import os
 import time
 import random
 import re
+import json
 from curl_cffi import requests
 from flask import Flask
 from threading import Thread
@@ -19,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active with Proxy Support!"
+    return "Stark Midas Bot is active with Auto-Proxy Support!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -38,28 +39,41 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-# لستة بروكسيات مجانية مؤقتة لتوزيع الطلبات (يمكن تحديثها لاحقاً ببروكسيات مدفوعة أو متجددة أوتوماتيكياً)
-PROXIES_POOL = [
-    # يمكنك وضع بروكسيات هنا، أو تركها فارغة وسيستخدم الاتصال المباشر مع تغيير البصمات والفاصل الزمني
-]
+# دالة جلب البروكسيات أوتوماتيكياً من Geonode API المجاني
+def fetch_geonode_proxies():
+    proxies_list = []
+    try:
+        api_url = "https://proxylist.geonode.com/api/proxy-list?limit=50&page=1&sort_by=lastChecked&sort_type=desc&protocols=http%2Chttps"
+        res = requests.get(api_url, timeout=5)
+        if res.status_code == 200:
+            data = res.json().get('data', [])
+            for p in data:
+                ip = p.get('ip')
+                port = p.get('port')
+                protocols = p.get('protocols', [])
+                if ip and port and ('http' in protocols or 'https' in protocols):
+                    proxy_str = f"http://{ip}:{port}"
+                    proxies_list.append(proxy_str)
+    except Exception:
+        pass
+    return proxies_list
 
-def get_random_proxy():
-    if PROXIES_POOL:
-        p = random.choice(PROXIES_POOL)
+def get_random_proxy(proxies_pool):
+    if proxies_pool:
+        p = random.choice(proxies_pool)
         return {"http": p, "https": p}
     return None
 
-def process_with_delay(target_url, headers):
+def process_with_delay(target_url, headers, proxies_pool):
     try:
-        time.sleep(random.uniform(1.0, 2.5))
-        proxy = get_random_proxy()
+        time.sleep(random.uniform(0.5, 1.5))
+        proxy = get_random_proxy(proxies_pool)
         browser = random.choice(["chrome110", "chrome120"])
         
-        # إنشاء سشن جديدة لكل طلب ببصمة وبروكسي مختلف تماماً لتفادي الحظر
         with requests.Session(impersonate=browser, proxies=proxy) as session:
-            res = session.get(target_url, headers=headers, timeout=6)
+            res = session.get(target_url, headers=headers, timeout=5)
             if res.status_code != 200:
-                res = session.post(target_url, json={}, headers=headers, timeout=6)
+                res = session.post(target_url, json={}, headers=headers, timeout=5)
             if res.status_code == 200:
                 return res.json()
     except Exception:
@@ -78,18 +92,19 @@ def send_3x_help(target_url):
         'Connection': 'keep-alive',
     }
 
-    # التحقق من أول طلب لإحضار بيانات اللاعب والتاكد من صلاحية الرابط
+    # جلب لستة بروكسيات حديثة قبل بدء التنفيذ
+    proxies_pool = fetch_geonode_proxies()
+
     first_res = None
     account_info = {}
     
     for _ in range(3):
         try:
-            proxy = get_random_proxy()
+            proxy = get_random_proxy(proxies_pool)
             temp_session = requests.Session(impersonate="chrome120", proxies=proxy)
-            temp_session.get('https://www.midasbuy.com/', headers=headers, timeout=6)
-            res = temp_session.get(target_url, headers=headers, timeout=6)
+            res = temp_session.get(target_url, headers=headers, timeout=5)
             if res.status_code != 200:
-                res = temp_session.post(target_url, json={}, headers=headers, timeout=6)
+                res = temp_session.post(target_url, json={}, headers=headers, timeout=5)
                 
             if res.status_code == 200:
                 data = res.json()
@@ -113,14 +128,13 @@ def send_3x_help(target_url):
         player_name = (account_info.get('roleName') or account_info.get('nickname') or first_res.get('roleName') or "لاعب PUBG")
         player_id = (account_info.get('roleId') or account_info.get('uid') or first_res.get('roleId') or "غير معروف")
         uc_balance = (account_info.get('balance') or account_info.get('uc') or first_res.get('balance') or "0")
-    except Exception as e:
+    except Exception:
         player_name, player_id, uc_balance = "لاعب PUBG", "غير معروف", "0"
 
     success_count = 1
 
-    # تنفيذ الـ 29 طلب المتبقية بتوزيعها على خيوط متعددة بفاصل زمني وبصمات متغيرة
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(process_with_delay, target_url, headers) for _ in range(29)]
+        futures = [executor.submit(process_with_delay, target_url, headers, proxies_pool) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
@@ -174,8 +188,7 @@ def send_welcome(message):
     welcome_text = (
         f"أهلاً بك يا <b>{user_name}</b> في بوت <b>STARK</b> 👑\n\n"
         f"{balance_display}\n"
-        "🔗 1 Link = 30 Invite\n"
-        "🎁 هدية لينك مجاني لكل 5 لينكات يتم شراؤها + لينك هدية عند دعوة صديق!\n\n"
+        "🔗 1 Link = 30 Invite\n\n"
         "اختر الخدمة المطلوبة أو أرسل الرابط مباشرة 👇"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard(), parse_mode="HTML")
@@ -230,7 +243,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بنظام التوزيع الذكي لتفادي الحماية...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ جلب البروكسيات وتجاوز الحماية ذكياً...")
         
         success, res = send_3x_help(extracted_url)
         
