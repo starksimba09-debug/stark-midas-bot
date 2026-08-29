@@ -3,7 +3,7 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
-TOKEN = "8961573070:AAEmTOgrp0tjG6rkeYJqeOqbHEF9uQvWBWg"
+TOKEN = "8961573070:AAFojTKU_1EBpjxAg-M_gI2V3_t9E0dZ4io"
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['check'])
