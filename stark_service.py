@@ -18,7 +18,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot with Dynamic Session & Cookies is active!"
+    return "Stark Midas Bot with Firefox Impersonation is active!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -51,12 +51,13 @@ def process_with_session(session, url, headers):
 def send_3x_help(target_url):
     start_time = time.time()
     
-    session = requests.Session(impersonate="chrome110")
+    # تجربة بصمة فايرفوكس لتخطي الحماية
+    session = requests.Session(impersonate="firefox110")
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/110.0',
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Language': 'en-US,en;q=0.5',
         'Referer': 'https://www.midasbuy.com/',
         'Origin': 'https://www.midasbuy.com',
         'Connection': 'keep-alive',
@@ -206,7 +207,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ إنشاء جلسة آمنة وتجاوز حماية الموقع...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ إنشاء جلسة فايرفوكس آمنة وتجاوز الحماية...")
         
         success, res = send_3x_help(extracted_url)
         
