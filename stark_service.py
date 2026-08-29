@@ -20,7 +20,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Stark Midas Bot is active with Auto-Proxy Support!"
+    return "Stark Midas Bot is active with Manual Proxy Pool!"
 
 def run():
     port = int(os.environ.get('PORT', 8080))
@@ -39,35 +39,95 @@ def extract_url(text):
         return urls[0].strip()
     return None
 
-# دالة جلب البروكسيات أوتوماتيكياً من Geonode API المجاني
-def fetch_geonode_proxies():
-    proxies_list = []
-    try:
-        api_url = "https://proxylist.geonode.com/api/proxy-list?limit=50&page=1&sort_by=lastChecked&sort_type=desc&protocols=http%2Chttps"
-        res = requests.get(api_url, timeout=5)
-        if res.status_code == 200:
-            data = res.json().get('data', [])
-            for p in data:
-                ip = p.get('ip')
-                port = p.get('port')
-                protocols = p.get('protocols', [])
-                if ip and port and ('http' in protocols or 'https' in protocols):
-                    proxy_str = f"http://{ip}:{port}"
-                    proxies_list.append(proxy_str)
-    except Exception:
-        pass
-    return proxies_list
+# لستة البروكسيات الحقيقية المحدثة لتخطي حظر كلاود فلير
+PROXIES_POOL = [
+    "http://139.255.74.124:8080",
+    "http://14.161.10.46:80",
+    "http://165.101.230.76:8080",
+    "http://66.135.27.9:443",
+    "http://192.252.220.89:4145",
+    "http://91.247.250.215:4145",
+    "http://47.82.80.23:1011",
+    "http://126.209.110.96:8087",
+    "http://103.125.17.106:8080",
+    "http://158.101.89.163:3123",
+    "http://208.67.28.27:58090",
+    "http://144.124.232.204:443",
+    "http://171.245.89.241:12328",
+    "http://118.179.167.238:55",
+    "http://87.106.120.212:3128",
+    "http://38.191.194.43:999",
+    "http://92.112.125.102:8443",
+    "http://115.127.112.178:1080",
+    "http://24.249.199.4:4145",
+    "http://123.138.24.112:8800",
+    "http://89.251.21.45:8080",
+    "http://176.12.72.62:3128",
+    "http://107.149.141.54:5001",
+    "http://5.129.214.191:8080",
+    "http://186.227.196.104:3128",
+    "http://23.143.160.193:999",
+    "http://160.250.54.9:9000",
+    "http://145.220.226.102:8080",
+    "http://107.173.182.177:30368",
+    "http://218.95.39.108:59999",
+    "http://38.46.233.245:3127",
+    "http://68.1.210.163:4145",
+    "http://171.236.89.87:1080",
+    "http://47.237.110.50:1080",
+    "http://45.174.56.21:999",
+    "http://192.3.20.150:3128",
+    "http://223.111.182.16:1552",
+    "http://103.112.163.131:8080",
+    "http://178.252.165.226:1080",
+    "http://51.222.13.193:10084",
+    "http://98.190.239.3:4145",
+    "http://198.98.57.207:1080",
+    "http://145.220.226.174:8080",
+    "http://168.138.219.12:8081",
+    "http://134.249.86.47:8080",
+    "http://200.121.48.195:999",
+    "http://138.118.107.29:999",
+    "http://38.58.117.72:8080",
+    "http://72.37.216.68:4145",
+    "http://162.214.74.29:8085",
+    "http://120.28.169.31:5050",
+    "http://145.220.226.54:8080",
+    "http://212.3.127.242:10801",
+    "http://103.97.141.40:8080",
+    "http://43.242.227.10:9053",
+    "http://38.190.1.70:1085",
+    "http://192.145.228.209:8082",
+    "http://180.191.14.210:8081",
+    "http://197.248.16.109:8080",
+    "http://38.76.196.46:9050",
+    "http://106.51.185.233:8080",
+    "http://124.105.79.237:8080",
+    "http://116.107.186.72:1080",
+    "http://98.178.72.30:4145",
+    "http://101.255.32.41:8080",
+    "http://185.157.111.3:5678",
+    "http://39.129.25.66:8060",
+    "http://157.254.221.38:20002",
+    "http://88.204.134.234:1080",
+    "http://66.135.16.53:80",
+    "http://37.187.109.70:10111",
+    "http://98.170.57.249:4145",
+    "http://154.88.189.21:5678",
+    "http://190.131.198.77:80",
+    "http://94.23.218.74:10808"
+]
 
-def get_random_proxy(proxies_pool):
-    if proxies_pool:
-        p = random.choice(proxies_pool)
+def get_random_proxy():
+    if PROXIES_POOL:
+        p = random.choice(PROXIES_POOL)
         return {"http": p, "https": p}
     return None
 
-def process_with_delay(target_url, headers, proxies_pool):
+def process_with_delay(target_url, headers):
     try:
         time.sleep(random.uniform(0.5, 1.5))
-        proxy = get_random_proxy(proxies_pool)
+        proxy = get_random_proxy()
         browser = random.choice(["chrome110", "chrome120"])
         
         with requests.Session(impersonate=browser, proxies=proxy) as session:
@@ -92,15 +152,12 @@ def send_3x_help(target_url):
         'Connection': 'keep-alive',
     }
 
-    # جلب لستة بروكسيات حديثة قبل بدء التنفيذ
-    proxies_pool = fetch_geonode_proxies()
-
     first_res = None
     account_info = {}
     
     for _ in range(3):
         try:
-            proxy = get_random_proxy(proxies_pool)
+            proxy = get_random_proxy()
             temp_session = requests.Session(impersonate="chrome120", proxies=proxy)
             res = temp_session.get(target_url, headers=headers, timeout=5)
             if res.status_code != 200:
@@ -134,7 +191,7 @@ def send_3x_help(target_url):
     success_count = 1
 
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [executor.submit(process_with_delay, target_url, headers, proxies_pool) for _ in range(29)]
+        futures = [executor.submit(process_with_delay, target_url, headers) for _ in range(29)]
         for future in futures:
             res_data = future.result()
             if res_data:
@@ -243,7 +300,7 @@ def handle_messages(message):
             bot.send_message(chat_id, f"❌ عذراً يا {user_name}، رصيدك غير كافي (0 Link). يرجى الشراء للاستمرار.")
             return
 
-        msg = bot.send_message(chat_id, f"🚀 جارٍ جلب البروكسيات وتجاوز الحماية ذكياً...")
+        msg = bot.send_message(chat_id, f"🚀 جارٍ المعالجة بنظام البروكسيات المتعددة...")
         
         success, res = send_3x_help(extracted_url)
         
@@ -264,7 +321,7 @@ def run_telegram_bot():
     while True:
         try:
             bot.polling(non_stop=True, interval=1)
-        except Exception as e:
+        except Exception:
             time.sleep(5)
 
 if __name__ == "__main__":
