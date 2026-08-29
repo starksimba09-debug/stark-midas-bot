@@ -74,11 +74,14 @@ def check_midasbuy(message):
         if response.status_code == 200:
             data = response.json()
             pretty_result = json.dumps(data, indent=2, ensure_ascii=False)
-            if len(pretty_result) > 4000:
-                pretty_result = pretty_result[:4000]
-            bot.reply_to(message, f"✅ تمت العملية بنجاح:\n\n`{pretty_result}`", parse_mode="Markdown")
+            
+            # تقليص النص بذكاء ليتوافق مع حدود تليجرام (أقصى حد آمن حوالي 3500 حرف)
+            if len(pretty_result) > 3500:
+                pretty_result = pretty_result[:3500] + "\n\n... [تم اقتطاع جزء من النتائج لطولها]"
+                
+            bot.reply_to(message, f"✅ تمت العملية بنجاح:\n\n```json\n{pretty_result}\n```", parse_mode="Markdown")
         else:
-            bot.reply_to(message, f"⚠️ حدث خطأ في الاستجابة، كود الحالة: {response.status_code}\n`{response.text}`", parse_mode="Markdown")
+            bot.reply_to(message, f"⚠️ حدث خطأ في الاستجابة، كود الحالة: {response.status_code}")
             
     except Exception as e:
         bot.reply_to(message, f"❌ حدث خطأ أثناء الاتصال: {str(e)}")
