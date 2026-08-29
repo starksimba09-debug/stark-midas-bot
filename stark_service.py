@@ -39,20 +39,9 @@ def extract_url(text):
 
 def process_single_request(url, headers):
     try:
-        res = requests.get(
-            url, 
-            impersonate="chrome110",
-            headers=headers, 
-            timeout=5
-        )
+        res = requests.get(url, impersonate="chrome110", headers=headers, timeout=5)
         if res.status_code != 200:
-            res = requests.post(
-                url, 
-                json={}, 
-                impersonate="chrome110",
-                headers=headers, 
-                timeout=5
-            )
+            res = requests.post(url, json={}, impersonate="chrome110", headers=headers, timeout=5)
         if res.status_code == 200:
             return res.json()
     except Exception:
@@ -79,10 +68,12 @@ def send_3x_help(target_url):
         if first_res.status_code != 200:
             return False, f"⚠️ عذراً، الموقع رفض الاتصال (كود: {first_res.status_code})."
         
+        # لو الاستجابة مش JSON هنعرض جزء من النص عشان نفهم إيه اللي راجع
         try:
             data = first_res.json()
         except:
-            return False, "⚠️ عذراً، استجابة موقع ميداسباي غير صالحة."
+            raw_text = first_res.text[:300] # أول 300 حرف من الرد
+            return False, f"⚠️ استجابة الموقع ليست JSON.\nمحتوى الرد:\n<code>{raw_text}</code>"
 
         res_text_lower = first_res.text.lower()
         if any(word in res_text_lower for word in ['limit', 'complete', 'ended', 'max', 'finish']):
@@ -221,16 +212,7 @@ def handle_messages(message):
             bot.edit_message_text(f"⚠️ **تنبيه:**\n\n{res}\n\n🛡️ <b>لم يتم خصم أي رصيد!</b>", chat_id=chat_id, message_id=msg.message_id, parse_mode="HTML")
             return
 
-        if not is_admin(username):
-            udata['balance'] -= 1
-
-        bot.edit_message_text(res, chat_id=chat_id, message_id=msg.message_id)
-        return
-        
-    else:
-        bot.send_message(chat_id, f"⚡ أهلاً بك يا {user_name}، استخدم الأزرار بالأسفل أو ابعت رابط ميداسباي 🚀 وسأقوم بتنفيذه فوراً!")
-
-def run_telegram_bot():
+        if not is_admin(username):def run_telegram_bot():
     while True:
         try:
             bot.polling(non_stop=True, interval=1)
