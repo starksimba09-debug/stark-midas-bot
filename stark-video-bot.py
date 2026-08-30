@@ -24,8 +24,13 @@ async def download_media(client, message):
         'outtmpl': output_template + '.%(ext)s',
         'format': 'best',
         'socket_timeout': 30,
+        'extractor_args': {
+            'instagram': {
+                'api_version': 'v1'
+            }
+        },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
     }
     
@@ -38,19 +43,13 @@ async def download_media(client, message):
         filename = await asyncio.get_event_loop().run_in_executor(None, do_download)
             
         if os.path.exists(filename):
-            # إرسال الفيديو
-            sent_video = await client.send_video(
+            await client.send_video(
                 chat_id=message.chat.id,
                 video=filename,
-                caption="تم التحميل بواسطة Stark Bot 📥\n(سيتم حذف رسالة التحميل والملف من السيرفر قريباً)"
+                caption="تم التحميل بواسطة Stark Bot 📥"
             )
             os.remove(filename)
             await sent_msg.delete()
-            
-            # (اختياري) لو حابب رسالة الفيديو نفسها تتدمر بعد دقيقة مثلاً لتنظيف الشات، تقدر تفعل السطرين دول:
-            # await asyncio.sleep(60)
-            # await sent_video.delete()
-            
         else:
             await sent_msg.edit("عذراً، لم أتمكن من تحميل الملف. تأكد من صحة الرابط.")
             
@@ -58,5 +57,5 @@ async def download_media(client, message):
         await sent_msg.edit("حدث خطأ أثناء التحميل. تأكد أن الرابط متاح للعامة.")
 
 if __name__ == "__main__":
-    print("البوت السريع مع الحذف التلقائي يعمل الآن...")
+    print("البوت السريع يعمل الآن...")
     app.run()
