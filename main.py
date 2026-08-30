@@ -1,22 +1,24 @@
 import os
+import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 import requests
 
-# قراءة البروكسيات من الملف
 def load_proxies():
     if os.path.exists("proxies.txt"):
         with open("proxies.txt", "r") as f:
             return [line.strip() for line in f if line.strip()]
     return []
 
-# دالة التعامل مع الروابط اللي بتجيلك على البوت
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     
-    # التأكد إن الرسالة فيها رابط ميداسباي
-    if "midasbuy.com" in user_message:
-        await update.message.reply_text("⏳ جارٍ بدء إرسال الطلبات عبر البروكسيات...")
+    # استخراج رابط Midasbuy بدقة من نص الرسالة حتى لو معاها كلام عربي
+    url_match = re.search(r'https?://[^\s]+midasbuy\.com[^\s]+', user_message)
+    
+    if url_match:
+        target_url = url_match.group(0)
+        await update.message.reply_text(f"⏳ جارٍ معالجة الرابط وإرسال الطلبات عبر البروكسيات...")
         
         proxies_list = load_proxies()
         if not proxies_list:
@@ -24,10 +26,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         success_count = 0
-        total_requests = 30  # عدد الطلبات المستهدف إرسالها زي فكرة فوكسي
+        total_requests = 30  
+        
+        # هيدرز عشان السيرفر يقبل الطلب كأنه متصفح حقيقي
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.midasbuy.com/"
+        }
         
         for i in range(total_requests):
-            # اختيار بروكسي بالتناوب (دورة تكرارية)
             proxy_item = proxies_list[i % len(proxies_list)]
             proxy_dict = {
                 "http": f"http://{proxy_item}",
@@ -35,14 +43,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
             
             try:
-                # إرسال الطلب لرابط المساعدة المستهدف
-                response = requests.get(user_message, proxies=proxy_dict, timeout=8)
-                if response.status_code == 200:
+                response = requests.get(target_url, headers=headers, proxies=proxy_dict, timeout=8)
+                # لو السيرفر رد بـ 200 أو حتى بتحويله ناجحة نحسبها صح
+                if response.status_code in [200, 301, 302]:
                     success_count += 1
             except Exception:
                 pass
 
-        # إرسال تقرير بالنتيجة شبه بوت فوكسي
         report = (
             f"✅ **تم الانتهاء بنجاح!**\n"
             f"📊 الطلبات الناجحة: {success_count}/{total_requests}\n"
@@ -50,10 +57,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(report, parse_mode="Markdown")
     else:
-        await update.message.reply_text("يرجى إرسال رابط مساعدة Midasbuy صحيح للبداء.")
+        await update.message.reply_text("يرجى إرسال رابط مساعدة Midasbuy صحيح يحتوي على الرابط.")
 
 if __name__ == "__main__":
-    # سحب التوكن أوتوماتيك من إعدادات Railway (الـ Environment Variables)
     TOKEN = os.getenv("BOT_TOKEN")
     
     if not TOKEN:
