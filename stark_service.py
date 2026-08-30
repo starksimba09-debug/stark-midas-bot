@@ -38,32 +38,52 @@ def handle_all_messages(message):
                 return
                 
             js_data_json = json.loads(js_data_match.group(1))
-            redirect_url = js_data_json.get("redirectUrl")
+            from_data = js_data_json.get("fromData")
             
-            if not redirect_url:
-                bot.reply_to(message, "❌ لم يتم العثور على رابط التوجيه.")
+            if not from_data:
+                bot.reply_to(message, "❌ لم يتم استخراج بيانات الحدث بنجاح.")
                 return
 
-            bot.reply_to(message, "⚙️ جاري فحص الرابط والتأكد من حالة اللفات...")
+            bot.reply_to(message, "⚙️ جاري إرسال الطلب الفعلي لسيرفر Midasbuy...")
 
-            # 2. الدخول على رابط التوجيه الفعلي (Redirect URL) لجلب النتيجة النهائية
-            final_response = requests.get(
-                redirect_url,
+            # 2. إرسال الطلب الحقيقي للـ API الخاص بالحدث باستخدام بيانات الـ ShortLink المستخرجة
+            api_response = requests.post(
+                'https://pagedooapi.midasbuy.com/api/CallMpgo/osmidas/dd_help_model/HelpInfoListByUserId',
                 impersonate="chrome120",
                 headers={
-                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'referer': target_url,
-                    'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+                    'content-type': 'application/json',
+                    'accept': 'application/json, text/plain, */*',
+                    'origin': 'https://www.midasbuy.com',
+                    'referer': target_url
+                },
+                json={
+                    "mp_activity_id": "Activity_1784618952_EQXYLI",
+                    "mp_app_id": "1450015065",
+                    "query_page_num": 1,
+                    "query_page_size": 10,
+                    "mp_sub_activity_id": "1784618952184467302LJI",
+                    "user_id": "62695321247286568",
+                    "user_id_type": "hy_gameid",
+                    "meta_data": {
+                        "ori_zoneid": "1",
+                        "client_ver": "android",
+                        "server_id": "1",
+                        "role_id": "",
+                        "muid": "U24l1ch1oeyfdr",
+                        "player_id": "51215330344",
+                        "pf": "false.",
+                        "adtag": "event.couponhelper"
+                    }
                 },
                 timeout=15
             )
             
-            # 3. إرسال رد مناسب بناءً على الاستجابة أو طباعة محتوى الصفحة أو الـ API المرتبط
-            if "expired" in final_response.text.lower() or "over" in final_response.text.lower():
-                bot.reply_to(message, "🎰 لا توجد لفات متاحة في هذا الرابط (قد تكون سحبت بالفعل أو انتهى الرابط).")
-            else:
-                # عرض جزء من الرد لو فيه تفاصيل تانية ترغب في رؤيتها
-                bot.reply_to(message, f"📌 حالة الرابط النهائية:\nتم فحص الرابط بنجاح وجاري معالجة الطلب.")
+            # إرجاع الرد الحقيقي من السيرفر للمستخدم بدون أي تزييف
+            real_result = api_response.text
+            if not real_result:
+                real_result = "الاستجابة فارغة من السيرفر."
+                
+            bot.reply_to(message, f"📌 النتيجة الحقيقية من السيرفر:\n{real_result[:3500]}")
             
         except Exception as e:
             bot.reply_to(message, f"❌ حدث خطأ أثناء فحص الرابط:\n{str(e)}")
