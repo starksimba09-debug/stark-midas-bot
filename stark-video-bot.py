@@ -17,37 +17,44 @@ app = Client(
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
     await message.reply_text(
-        "👋 أهلاً بك في بوت Stark Video لتحميل الفيديوهات!\n\n"
-        "🎬 أرسل رابط الفيديو الآن، وسأقوم بتحميله وإرساله لك فوراً."
+        "👋 أهلاً بك في بوت Stark Video لتحميل الفيديوهات والصور!\n\n"
+        "📥 أرسل رابط المنشور (فيديو أو صورة) الآن، وسأقوم بتحميله وإرساله لك فوراً."
     )
 
-# دالة استقبال الروابط وتحميلها
+# دالة استقبال الروابط وتحميل الملفات (صور أو فيديوهات)
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
-async def download_video(client, message):
+async def download_media(client, message):
     url = message.text
     if "http" in url:
-        sent_message = await message.reply_text("📥 جاري فحص وتحميل الفيديو...")
+        sent_message = await message.reply_text("📥 جاري فحص وتحميل الملف...")
         try:
             ydl_opts = {
-                'format': 'best',
-                'outtmpl': 'video.mp4',
+                'format': 'best/bestvideo+bestaudio',
+                'outtmpl': 'downloaded_media.%(ext)s',
                 'max_filesize': 50 * 1024 * 1024, # حد أقصى 50 ميجا عشان تيليجرام
+                'noplaylist': True,
             }
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 filename = ydl.prepare_filename(info)
             
-            await message.reply_video(filename, caption="✅ تم التحميل بنجاح بواسطة Stark Bot!")
+            # التأكد من صيغة الملف لإرساله بالطريقة الصحيحة (صورة أو فيديو)
+            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                await message.reply_photo(filename, caption="✅ تم تحميل الصورة بنجاح بواسطة Stark Bot!")
+            else:
+                await message.reply_video(filename, caption="✅ تم تحميل الفيديو بنجاح بواسطة Stark Bot!")
+                
             await sent_message.delete()
             
-            # حذف الملف بعد الإرسال لتوفير المساحة
+            # حذف الملف المؤقت بعد الإرسال
             if os.path.exists(filename):
                 os.remove(filename)
                 
         except Exception as e:
             await sent_message.edit_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
     else:
-        await message.reply_text("⚠️ أهلاً بك! يرجى إرسال رابط فيديو صحيح للتحميل.")
+        await message.reply_text("⚠️ أهلاً بك! يرجى إرسال رابط صحيح (فيديو أو صورة).")
 
 if __name__ == "__main__":
     print("🤖 Stark Video Bot is running...")
