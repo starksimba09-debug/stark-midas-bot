@@ -1,6 +1,6 @@
 import os
 from pyrogram import Client, filters
-import yt-dlp
+import yt_dlp
 import google.generativeai as genai
 
 # إعداد مفتاح جيميناي من متغيرات البيئة في Railway
@@ -39,8 +39,6 @@ async def chat_with_ai(client, message):
         await sent_message.edit_text(response.text)
     except Exception as e:
         await sent_message.edit_text(f"حدث خطأ أثناء الاتصال بالذكاء الاصطناعي: {str(e)}")
-
-# (هنا تكمل باقي أجزاء كود تحميل الفيديوهات الخاص بك مع yt-dlp و cookies.txt)
 
 if __name__ == "__main__":
     print("🤖 Stark Bot is running...")
