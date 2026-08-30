@@ -7,7 +7,7 @@ headers = {
     'accept': 'application/json, text/plain, */*',
     'accept-language': 'ar-EG',
     'content-type': 'application/json',
-    'cookie': '_gcl_au=1.1.786793852.1788028844; _gid=GA1.2.1911735912.1788028844; forterToken=af9908db7444b4694c34638e4973aa6_1788053200887__UDF43-m4_27ck_; _ga=GA1.2.1582460889.1788028844; _ga_NQX2JD8STG=GS2.1.s1788053196$o4$g1$t1788055130$j48$l0$h0',
+    'cookie': '_gcl_au=1.1.786793852.1788028844; _gid=GA1.2.1911735912.1788028844; forterToken=af9908db7444b4694c34638e4973aa6_1788053200887__UDF43-m4_27ck_; _gat_UA-21773189-2=1; _ga=GA1.2.1582460889.1788028844; _ga_NQX2JD8STG=GS2.1.s1788053196$o4$g1$t1788056195$j45$l0$h0',
     'origin': 'https://www.midasbuy.com',
     'priority': 'u=1, i',
     'referer': 'https://www.midasbuy.com/',
@@ -17,9 +17,9 @@ headers = {
     'sec-fetch-dest': 'empty',
     'sec-fetch-mode': 'cors',
     'sec-fetch-site': 'same-site',
-    'traceparent': '00-1cf30428ab624063c5d4c0e2accdd7ca-2f64bcb7115dea31-01',
+    'traceparent': '00-673f597376e2720de8b40fbf24a04bfc-6b92e664c519c4e2-01',
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
-    'x-request-id': 'jLsYUUgmp_JN-skMyZB8Z-7',
+    'x-request-id': 'qQ9MlilnjNw-zj1YjS6OJ-0',
     'x-tencent-login-check': '{"accountType":"midasbuy","appid":"123123","endpoint_type":"mpgo_activity","offer_id":"1450015065","openid":"62695321247286568","openkey":"nokey","pf":"mds_pc_browser-v2-android-midasweb","session_id":"hy_gameid","session_type":"st_dummy","token":"43416bf502ba607a1f677e7002dc66efbc8f0f68ffc9afb2ba09bdd5edafa221","userType":"hy_gameid"}'
 }
 
@@ -46,15 +46,9 @@ payload = {
 try:
     response = requests.post(url, headers=headers, json=payload)
     print("Status Code:", response.status_code)
-    print("Raw Response Text:", response.text)
-    
-    if response.text.strip():
-        try:
-            print("Response JSON:", response.json())
-        except json.JSONDecodeError:
-            print("الرد ليس بصيغة JSON صالح (ربما صفحة حماية أو خطأ HTML).")
-    else:
-        print("الرد فارغ تماماً من السيرفر.")
-        
+    try:
+        print("Response JSON:", json.dumps(response.json(), indent=4, ensure_ascii=False))
+    except:
+        print("Raw Response:", response.text)
 except Exception as e:
-    print(f"حدث خطأ أثناء المعالجة: {e}")
+    print(f"حدث خطأ: {e}")
