@@ -7,8 +7,8 @@ import google.generativeai as genai
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 ai_model = genai.GenerativeModel("gemini-1.5-flash")
 
-# إعدادات البوت باستخدام متغيرات البيئة الحساسة
-API_ID = os.environ.get("API_ID")
+# إعدادات البوت وتحويل API_ID إلى رقم صحيح (Integer)
+API_ID = int(os.environ.get("API_ID")) if os.environ.get("API_ID") else None
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
