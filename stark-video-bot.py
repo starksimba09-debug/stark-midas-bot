@@ -17,11 +17,11 @@ app = Client(
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
     await message.reply_text(
-        "👋 أهلاً بك في بوت Stark Video لتحميل الفيديوهات والصور!\n\n"
+        "👋 أهلاً بك في بوت Stark Video لتحميل الميديا!\n\n"
         "📥 أرسل رابط المنشور (فيديو أو صورة) الآن، وسأقوم بتحميله وإرساله لك فوراً."
     )
 
-# دالة استقبال الروابط وتحميل الملفات (صور أو فيديوهات)
+# دالة استقبال الروابط وتحميل الملفات
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def download_media(client, message):
     url = message.text
@@ -29,32 +29,59 @@ async def download_media(client, message):
         sent_message = await message.reply_text("📥 جاري فحص وتحميل الملف...")
         try:
             ydl_opts = {
-                'format': 'best/bestvideo+bestaudio',
-                'outtmpl': 'downloaded_media.%(ext)s',
-                'max_filesize': 50 * 1024 * 1024, # حد أقصى 50 ميجا عشان تيليجرام
+                'outtmpl': 'downloaded_media',
                 'noplaylist': True,
+                'skip_download': False,
+                # السماح بتحميل الصور والفيديوهات وعدم تقييد الاستخراج
+                'extract_flat': False,
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+                
+                # لو البوست عبارة عن مجموعة صور (Album/Carousel)
+                if 'entries' in info:
+                    for entry in info['entries']:
+                        filename = ydl.prepare_filename(entry)
+                        if os.path.exists(filename):
+                            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                                await message.reply_photo(filename)
+                            else:
+                                await message.reply_video(filename)
+                            os.remove(filename)
+                    await sent_message.delete()
+                    return
+
                 filename = ydl.prepare_filename(info)
             
-            # التأكد من صيغة الملف لإرساله بالطريقة الصحيحة (صورة أو فيديو)
-            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                await message.reply_photo(filename, caption="✅ تم تحميل الصورة بنجاح بواسطة Stark Bot!")
+            # التأكد من مسار الملف وإرساله بالصيغة المناسبة
+            if os.path.exists(filename):
+                if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    await message.reply_photo(filename, caption="✅ تم تحميل الصورة بنجاح!")
+                else:
+                    await message.reply_video(filename, caption="✅ تم تحميل الفيديو بنجاح!")
+                os.remove(filename)
             else:
-                await message.reply_video(filename, caption="✅ تم تحميل الفيديو بنجاح بواسطة Stark Bot!")
+                # محاولة البحث عن أي ملف تم تنزيله بنفس الاسم الأساسي
+                found = False
+                for file in os.listdir('.'):
+                    if file.startswith('downloaded_media'):
+                        found = True
+                        if file.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                            await message.reply_photo(file, caption="✅ تم تحميل الصورة بنجاح!")
+                        else:
+                            await message.reply_video(file, caption="✅ تم تحميل الملف بنجاح!")
+                        os.remove(file)
+                        break
+                if not found:
+                    raise Exception("لم يتم العثور على ملف قابل للتحميل في هذا الرابط.")
                 
             await sent_message.delete()
-            
-            # حذف الملف المؤقت بعد الإرسال
-            if os.path.exists(filename):
-                os.remove(filename)
                 
         except Exception as e:
             await sent_message.edit_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
     else:
-        await message.reply_text("⚠️ أهلاً بك! يرجى إرسال رابط صحيح (فيديو أو صورة).")
+        await message.reply_text("⚠️ أهلاً بك! يرجى إرسال رابط صحيح.")
 
 if __name__ == "__main__":
     print("🤖 Stark Video Bot is running...")
