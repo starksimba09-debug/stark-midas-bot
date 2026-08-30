@@ -1,1 +1,2 @@
-web: python stark_service.py
+worker: python main.py
+
