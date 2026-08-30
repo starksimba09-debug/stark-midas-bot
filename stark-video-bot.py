@@ -22,15 +22,18 @@ async def download_media(client, message):
     
     ydl_opts = {
         'outtmpl': output_template + '.%(ext)s',
-        'format': 'best',
+        'format': 'best/bestvideo+bestaudio',
         'socket_timeout': 30,
         'extractor_args': {
             'instagram': {
-                'api_version': 'v1'
+                'max_comments': [0],
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
         }
     }
     
