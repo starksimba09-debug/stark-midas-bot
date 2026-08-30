@@ -22,18 +22,11 @@ async def download_media(client, message):
     
     ydl_opts = {
         'outtmpl': output_template + '.%(ext)s',
-        'format': 'best/bestvideo+bestaudio',
+        'format': 'best',
         'socket_timeout': 30,
-        'extractor_args': {
-            'instagram': {
-                'max_comments': [0],
-            }
-        },
+        'cookiefile': 'cookies.txt',  # ربط ملف الكوكيز هنا
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Sec-Fetch-Mode': 'navigate',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         }
     }
     
@@ -57,7 +50,7 @@ async def download_media(client, message):
             await sent_msg.edit("عذراً، لم أتمكن من تحميل الملف. تأكد من صحة الرابط.")
             
     except Exception as e:
-        await sent_msg.edit("حدث خطأ أثناء التحميل. تأكد أن الرابط متاح للعامة.")
+        await sent_msg.edit(f"حدث خطأ أثناء التحميل: {str(e)}")
 
 if __name__ == "__main__":
     print("البوت السريع يعمل الآن...")
