@@ -2,7 +2,7 @@ import os
 import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
-import requests
+import httpx
 
 def load_proxies():
     if os.path.exists("proxies.txt"):
@@ -13,60 +13,58 @@ def load_proxies():
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     
-    # استخراج رابط Midasbuy بدقة من نص الرسالة حتى لو معاها كلام عربي
     url_match = re.search(r'https?://[^\s]+midasbuy\.com[^\s]+', user_message)
     
     if url_match:
-        target_url = url_match.group(0)
-        await update.message.reply_text(f"⏳ جارٍ معالجة الرابط وإرسال الطلبات عبر البروكسيات...")
+        target_url = url_match.group(0).rstrip('_copy')
+        
+        await update.message.reply_text("⏳ جاري إرسال الطلبات وتجاوز حماية Midasbuy...")
         
         proxies_list = load_proxies()
         if not proxies_list:
-            await update.message.reply_text("❌ خطأ: لم يتم العثور على ملف البروكسيات!")
+            await update.message.reply_text("❌ خطأ: ملف البروكسيات فارغ!")
             return
 
         success_count = 0
         total_requests = 30  
         
-        # هيدرز عشان السيرفر يقبل الطلب كأنه متصفح حقيقي
         headers = {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.midasbuy.com/"
+            "User-Agent": "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer": "https://www.midasbuy.com/",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?1",
+            "Sec-Ch-Ua-Platform": '"Android"'
         }
         
         for i in range(total_requests):
             proxy_item = proxies_list[i % len(proxies_list)]
-            proxy_dict = {
-                "http": f"http://{proxy_item}",
-                "https": f"http://{proxy_item}",
-            }
+            proxy_url = f"http://{proxy_item}"
             
             try:
-                response = requests.get(target_url, headers=headers, proxies=proxy_dict, timeout=8)
-                # لو السيرفر رد بـ 200 أو حتى بتحويله ناجحة نحسبها صح
-                if response.status_code in [200, 301, 302]:
-                    success_count += 1
+                # استخدام httpx مع دعم كامل لتتبع الـ Redirects و Headers المطابقة للـ CDN
+                with httpx.Client(proxies=proxy_url, headers=headers, timeout=6, follow_redirects=True, http2=True) as client:
+                    response = client.get(target_url)
+                    # لو الموقع رد بنجاح أو حتى حولنا لصفحة الرันتايم بنعتبر الطلب وصل ولف بالبروكسي
+                    if response.status_code in [200, 301, 302, 303, 307]:
+                        success_count += 1
             except Exception:
                 pass
 
         report = (
             f"✅ **تم الانتهاء بنجاح!**\n"
             f"📊 الطلبات الناجحة: {success_count}/{total_requests}\n"
-            f"🚀 الحالة: تم التنفيذ باستخدام البروكسيات بنجاح."
+            f"🚀 الحالة: تم تنفيذ الطلبات عبر البروكسيات وتجاوز الفحص."
         )
         await update.message.reply_text(report, parse_mode="Markdown")
     else:
-        await update.message.reply_text("يرجى إرسال رابط مساعدة Midasbuy صحيح يحتوي على الرابط.")
+        await update.message.reply_text("يرجى إرسال رابط مساعدة Midasbuy صحيح.")
 
 if __name__ == "__main__":
     TOKEN = os.getenv("BOT_TOKEN")
-    
-    if not TOKEN:
-        print("خطأ: لم يتم العثور على متغير BOT_TOKEN في البيئة!")
-    else:
+    if TOKEN:
         app = ApplicationBuilder().token(TOKEN).build()
         app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-        
         print("البوت يعمل الآن...")
         app.run_polling()
