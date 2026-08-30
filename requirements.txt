@@ -1,3 +1,2 @@
-pyTelegramBotAPI
-playwright
-curl_cffi
+python-telegram-bot
+
