@@ -16,7 +16,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if url_match:
         target_url = url_match.group(0).rstrip('_copy')
-        status_msg = await update.message.reply_text("⏳ جاري إرسال الطلبات وتجاوز حماية Midasbuy...")
+        await update.message.reply_text("⏳ جاري إرسال طلبات المساعدة بالهيدرز الاحترافية...")
         
         proxies_list = load_proxies()
         if not proxies_list:
@@ -27,9 +27,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_requests = 30  
         
         headers = {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
             "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8",
+            "Sec-Ch-Ua": '"Chromium";v="127", "Not)A;Brand";v="99", "Microsoft Edge Simulate";v="127"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Linux"',
+            "Sec-Fetch-Site": "same-site",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
             "Referer": "https://www.midasbuy.com/"
         }
         
@@ -38,7 +45,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             proxy_url = f"http://{proxy_item}"
             
             try:
-                with httpx.Client(proxies=proxy_url, headers=headers, timeout=5, follow_redirects=True) as client:
+                with httpx.Client(proxies=proxy_url, headers=headers, timeout=6, follow_redirects=True, http2=True) as client:
+                    # زيارات محاكاة حقيقية لرابط المساعدة المدعوم بالبروكسي
                     response = client.get(target_url)
                     if response.status_code in [200, 301, 302, 303, 307]:
                         success_count += 1
@@ -48,7 +56,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report = (
             f"✅ **تم الانتهاء بنجاح!**\n"
             f"📊 الطلبات الناجحة: {success_count}/{total_requests}\n"
-            f"🚀 الحالة: تم تنفيذ الطلبات عبر البروكسيات."
+            f"🚀 الحالة: تم تمرير المساعدات بنجاح عبر البروكسيات."
         )
         await update.message.reply_text(report, parse_mode="Markdown")
     else:
@@ -60,5 +68,4 @@ if __name__ == "__main__":
         app = ApplicationBuilder().token(TOKEN).build()
         app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
         print("البوت يعمل الآن بدون تضارب...")
-        # استخدام drop_pending_updates لتجاهل أي جلسات عالقة قديمة
         app.run_polling(drop_pending_updates=True)
