@@ -12,13 +12,11 @@ def load_proxies():
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
-    
     url_match = re.search(r'https?://[^\s]+midasbuy\.com[^\s]+', user_message)
     
     if url_match:
         target_url = url_match.group(0).rstrip('_copy')
-        
-        await update.message.reply_text("⏳ جاري إرسال الطلبات وتجاوز حماية Midasbuy...")
+        status_msg = await update.message.reply_text("⏳ جاري إرسال الطلبات وتجاوز حماية Midasbuy...")
         
         proxies_list = load_proxies()
         if not proxies_list:
@@ -30,12 +28,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://www.midasbuy.com/",
-            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-            "Sec-Ch-Ua-Mobile": "?1",
-            "Sec-Ch-Ua-Platform": '"Android"'
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8",
+            "Referer": "https://www.midasbuy.com/"
         }
         
         for i in range(total_requests):
@@ -43,10 +38,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             proxy_url = f"http://{proxy_item}"
             
             try:
-                # استخدام httpx مع دعم كامل لتتبع الـ Redirects و Headers المطابقة للـ CDN
-                with httpx.Client(proxies=proxy_url, headers=headers, timeout=6, follow_redirects=True, http2=True) as client:
+                with httpx.Client(proxies=proxy_url, headers=headers, timeout=5, follow_redirects=True) as client:
                     response = client.get(target_url)
-                    # لو الموقع رد بنجاح أو حتى حولنا لصفحة الرันتايم بنعتبر الطلب وصل ولف بالبروكسي
                     if response.status_code in [200, 301, 302, 303, 307]:
                         success_count += 1
             except Exception:
@@ -55,7 +48,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report = (
             f"✅ **تم الانتهاء بنجاح!**\n"
             f"📊 الطلبات الناجحة: {success_count}/{total_requests}\n"
-            f"🚀 الحالة: تم تنفيذ الطلبات عبر البروكسيات وتجاوز الفحص."
+            f"🚀 الحالة: تم تنفيذ الطلبات عبر البروكسيات."
         )
         await update.message.reply_text(report, parse_mode="Markdown")
     else:
@@ -66,5 +59,6 @@ if __name__ == "__main__":
     if TOKEN:
         app = ApplicationBuilder().token(TOKEN).build()
         app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-        print("البوت يعمل الآن...")
-        app.run_polling()
+        print("البوت يعمل الآن بدون تضارب...")
+        # استخدام drop_pending_updates لتجاهل أي جلسات عالقة قديمة
+        app.run_polling(drop_pending_updates=True)
