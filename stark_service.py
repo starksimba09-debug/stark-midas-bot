@@ -46,7 +46,15 @@ payload = {
 try:
     response = requests.post(url, headers=headers, json=payload)
     print("Status Code:", response.status_code)
-    print("Response JSON:")
-    print(json.dumps(response.json(), indent=4, ensure_ascii=False))
+    print("Raw Response Text:", response.text)
+    
+    if response.text.strip():
+        try:
+            print("Response JSON:", response.json())
+        except json.JSONDecodeError:
+            print("الرد ليس بصيغة JSON صالح (ربما صفحة حماية أو خطأ HTML).")
+    else:
+        print("الرد فارغ تماماً من السيرفر.")
+        
 except Exception as e:
-    print(f"حدث خطأ: {e}")
+    print(f"حدث خطأ أثناء المعالجة: {e}")
