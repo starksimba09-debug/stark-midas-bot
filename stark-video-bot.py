@@ -1,4 +1,5 @@
 import os
+import asyncio
 from pyrogram import Client, filters
 import yt_dlp
 
@@ -9,13 +10,13 @@ BOT_TOKEN = "8528693331:AAHhUHbnOKVgrEpAl5mbGLUft9Wzzlw3sVE"
 app = Client("stark_video_bot_session", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 @app.on_message(filters.command("start"))
-def start_command(client, message):
-    message.reply_text("أهلاً بك في بوت Stark Video السريع! ابعث لي رابط أي فيديو أو ريلز من انستجرام أو فيسبوك وسأرسله لك فوراً.")
+async def start_command(client, message):
+    await message.reply_text("أهلاً بك في بوت Stark Video السريع! ابعث لي رابط أي فيديو أو ريلز وسأرسله لك فوراً.")
 
 @app.on_message(filters.regex(r"https?://[^\s]+") & filters.private)
-def download_media(client, message):
+async def download_media(client, message):
     url = message.text
-    sent_msg = message.reply_text("⏳ جاري التحميل بأقصى سرعة...")
+    sent_msg = await message.reply_text("⏳ جاري التحميل بأقصى سرعة...")
     
     output_template = f"media_{message.from_user.id}"
     
@@ -29,24 +30,33 @@ def download_media(client, message):
     }
     
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+        def do_download():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return ydl.prepare_filename(info)
+
+        filename = await asyncio.get_event_loop().run_in_executor(None, do_download)
             
         if os.path.exists(filename):
-            client.send_video(
+            # إرسال الفيديو
+            sent_video = await client.send_video(
                 chat_id=message.chat.id,
                 video=filename,
-                caption="تم التحميل بواسطة Stark Bot 📥"
+                caption="تم التحميل بواسطة Stark Bot 📥\n(سيتم حذف رسالة التحميل والملف من السيرفر قريباً)"
             )
             os.remove(filename)
-            sent_msg.delete()
+            await sent_msg.delete()
+            
+            # (اختياري) لو حابب رسالة الفيديو نفسها تتدمر بعد دقيقة مثلاً لتنظيف الشات، تقدر تفعل السطرين دول:
+            # await asyncio.sleep(60)
+            # await sent_video.delete()
+            
         else:
-            sent_msg.edit("عذراً، لم أتمكن من تحميل الملف. تأكد من صحة الرابط.")
+            await sent_msg.edit("عذراً، لم أتمكن من تحميل الملف. تأكد من صحة الرابط.")
             
     except Exception as e:
-        sent_msg.edit("حدث خطأ أثناء التحميل. تأكد أن الرابط متاح للعامة.")
+        await sent_msg.edit("حدث خطأ أثناء التحميل. تأكد أن الرابط متاح للعامة.")
 
 if __name__ == "__main__":
-    print("البوت السريع يعمل الآن...")
+    print("البوت السريع مع الحذف التلقائي يعمل الآن...")
     app.run()
