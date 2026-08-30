@@ -1,3 +1,1 @@
-worker: python bot.py
-
-
+worker: python stark-video-bot.py
