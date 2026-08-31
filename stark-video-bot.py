@@ -5,7 +5,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
-BOT_TOKEN = "Nq-e5dBu0Ub"
+BOT_TOKEN = "8528693331:AAHhUHbnOKVgrEpAl5mbGLUft9Wzzlw3sVE"
 
 app = Client(
     "stark_video_bot",
