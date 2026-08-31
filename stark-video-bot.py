@@ -30,11 +30,9 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # تحديد نوع الطلب (رابط أم بحث نصي عن شخصية/صورة/أغنية)
     if text.startswith("http"):
         query = text
     else:
-        # لو المستخدم كتب اسم شخصية أو شيء عام للبحث عن صورته، نستخدم محرك البحث بصيغة صور
         query = f"ytsearch1:{text} صورة شخصية"
         
     user_queries[chat_id] = query
@@ -60,22 +58,9 @@ async def handle_incoming_text(client, message):
             ext = info.get('ext')
             formats = info.get('formats', [])
             
-        # التحقق إذا كان الرابط أو النتيجة تخص صورة (أو بحث شخصية)
         if not formats or ext in ['jpg', 'png', 'jpeg'] or 'pinterest' in query.lower() or not text.startswith("http"):
             await msg.edit_text(f"⏳ جاري جلب صورة الشخصية ({text})...")
             
-            img_opts = {
-                'cookiefile': 'cookies.txt',
-                'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'format': 'best',
-                # في حالة البحث النصي، نجبر yt-dlp على محاولة استخراج صدارة المعاينة كصورة
-                'skip_download': False
-            }
-            
-            # لو كان بحث نصي لشخصية، نستخدم الكويري الأصلي المباشر للبحث في صور جوجل أو بينتريست عبر yt-dlp لو أمكن، أو استخراج المعاينة
-            actual_query = f"https://www.google.com/search?q={text}+image&tbm=isch" if not text.startswith("http") else query
-            
-            # بديل أدق وأسرع للبحث بالاسم لجلب صورة الشخصية مباشرة من يوتيوب/جوجل المعاينة
             search_target = f"ytsearch1:{text} profile picture" if not text.startswith("http") else query
             
             with yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'quiet': True}) as ydl2:
@@ -86,14 +71,13 @@ async def handle_incoming_text(client, message):
                     thumbnail_url = s_info.get('thumbnail')
                     
                     if thumbnail_url:
-                        # لو لقينا صورة مصغرة ممتازة للشخصية، نبعتها مباشرة
-                        await client.send_photo(chat_id, photo=thumbnail_url, caption=👤 الشخصية: {text})
+                        # تم تصحيح السطر هنا بوضع علامات التنصيص النصية الصحيحة
+                        await client.send_photo(chat_id, photo=thumbnail_url, caption=f"👤 الشخصية: {text}")
                         await msg.delete()
                         return
                 except:
                     pass
 
-            # لو فشلت الطريقة السابقة، نحملها كملف عادي
             with yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(id)s.%(ext)s'}) as ydl3:
                 res_info = ydl3.extract_info(query, download=True)
                 if 'entries' in res_info and res_info['entries']:
@@ -112,7 +96,6 @@ async def handle_incoming_text(client, message):
                     await msg.delete()
                     return
 
-        # لو النتيجة فيديو أو أغنية عادية
         keyboard = [
             [InlineKeyboardButton("🎵 تحميل صوت (MP3)", callback_data="dl_audio")],
             [InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="dl_video")]
