@@ -32,25 +32,31 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # معالجة روابط الصور المباشرة (Pinterest, Instagram, Facebook) عبر السحب المباشر لمنع أخطاء yt-dlp
+    # محاولة سحب الصورة المباشرة لأي رابط
     if any(domain in text for domain in ["pin.it", "pinterest.com", "instagram.com", "facebook.com", "fb.watch"]):
-        msg = await message.reply_text("⏳ جاري استخراج الوسائط من الرابط...")
+        msg = await message.reply_text("⏳ جاري فحص الرابط واستخراج المحتوى...")
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
-            r = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
+            r = requests.get(text, headers=headers, allow_redirects=True, timeout=8)
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # محاولة البحث عن الصورة الأساسية في الـ Meta Tags
             img_tag = soup.find("meta", property="og:image")
             if img_tag and img_tag.get("content"):
                 img_url = img_tag["content"]
-                await client.send_photo(chat_id, photo=img_url, caption="📥 تم جلب الصورة بنجاح!")
-                await msg.delete()
-                return
+                # التأكد إن الرابط حقيقي ومش مجرد صورة بروفایل عامة
+                if "http" in img_url:
+                    await client.send_photo(chat_id, photo=img_url, caption="📥 تم جلب الصورة بنجاح!")
+                    await msg.delete()
+                    return
         except Exception:
-            pass  # لو فشلت الطريقة المباشرة، يكمل للتحميل العادي لو كان فيديو
+            pass
+
+        # لو رابط انستجرام وطلع بوست صور (مش ريلز/فيديو)، نبلغ المستخدم بذوق بدل إيرور yt-dlp المرعب
+        if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
+            await msg.edit_text("⚠️ هذا الرابط عبارة عن **منشور صور** من انستجرام. إنستجرام يحظر تحميل صور المنشورات الثابتة بروابط مباشرة حالياً. يجدر الإرسال لو كان (Reels/فيديو) أو اسم شخصية للبحث عنه!")
+            return
 
     # البحث عن الشخصيات أو الأسماء
     if not text.startswith("http"):
@@ -101,7 +107,7 @@ async def handle_incoming_text(client, message):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، هذا الرابط يحتوي على صورة فقط أو غير مدعوم للفيديوهات:\n`{str(e)}`")
+        await msg.edit_text("❌ عذراً، هذا الرابط إما أنه صورة فقط أو غير مدعوم للفيديوهات حالياً.")
 
 @app.on_callback_query()
 async def download_callback(client, callback_query):
@@ -139,7 +145,7 @@ async def download_callback(client, callback_query):
         os.remove(filename)
         await callback_query.message.delete()
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ خطأ أثناء التحميل: {str(e)}")
+        await callback_query.message.edit_text(f"❌ خطأ أثناء التحميل: تأكد من صحة الرابط.")
 
 if __name__ == "__main__":
     app.run()
