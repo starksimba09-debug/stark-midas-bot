@@ -3,7 +3,6 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
-from bs4 import BeautifulSoup
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -19,9 +18,9 @@ app = Client(
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
     await message.reply_text(
-        "👋 أهلاً بك في بوت التحميل المباشر!\n\n"
-        "• أرسل لي **اسم أي شخصية** وسأرسل لك صورها مباشرة 🖼️\n"
-        "• أرسل لي **رابط إنستجرام (ريلز أو صور)** وسأقوم بإرساله فوراً 📥"
+        "👋 أهلاً بك في البوت المحدث!\n\n"
+        "• أرسل اسم أي شخصية لجلب صورها 🖼️\n"
+        "• أرسل رابط إنستجرام أو فيسبوك للتحميل المباشر 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -29,7 +28,7 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. البحث عن الصور بالأسماء
+    # 1. البحث العشوائي عن الصور بالأسماء
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري جلب الصور لـ ({text})...")
         try:
@@ -52,33 +51,37 @@ async def handle_incoming_text(client, message):
         except Exception:
             pass
         
-        await msg.edit_text("❌ لم يتم العثور على صور، جرب كلمة أخرى.")
+        await msg.edit_text("❌ لم يتم العثور على صور.")
         return
 
     # 2. منع يوتيوب نهائياً
     if "youtube.com" in text or "youtu.be" in text:
-        await message.reply_text("❌ تم إلغاء دعم يوتيوب، أرسل روابط إنستجرام أو فيسبوك فقط.")
+        await message.reply_text("❌ تم إلغاء دعم يوتيوب بناءً على رغبتك.")
         return
 
-    # 3. معالجة روابط إنستجرام (لو منشور صور /p/ سحبه كصورة، لو ريلز كفيديو)
-    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
-    
-    try:
-        if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
-            # سحب الصورة مباشرة من meta tags الخاصة بالمنشور
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            r = requests.get(text, headers=headers, timeout=10)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            img_tag = soup.find("meta", property="og:image")
-            
-            if img_tag and img_tag.get("content"):
-                await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم إرسال الصورة بنجاح!")
-                await msg.delete()
-                return
+    msg = await message.reply_text("⏳ جاري المعالجة...")
 
-        # 4. لو فيديو (ريلز إنستجرام أو فيسبوك) يتم تحميله بـ yt-dlp
+    try:
+        # 3. لو رابط إنستجرام صور (/p/) نستخدم API خارجي نظيف يجيب الصور مباشرة بدون أخطاء yt-dlp
+        if "instagram.com" in text and "/p/" in text:
+            api_json_url = f"https://apis.davidcyriltech.workers.dev/instagram?url={text}"
+            r = requests.get(api_json_url, timeout=15).json()
+            
+            if r.get("success") and r.get("medias"):
+                media_list = r["medias"]
+                # لو صورة واحدة أو كذا صورة
+                media_group = []
+                for m in media_list[:4]: # أقصى حد 4 صور معاً
+                    media_url = m.get("url")
+                    if media_url:
+                        media_group.append(InputMediaPhoto(media=media_url))
+                
+                if media_group:
+                    await client.send_media_group(chat_id, media=media_group)
+                    await msg.delete()
+                    return
+
+        # 4. لو ريلز إنستجرام أو فيسبوك (فيديو) -> يروح لـ yt-dlp بأمان تام
         os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
@@ -100,7 +103,7 @@ async def handle_incoming_text(client, message):
         await msg.delete()
         
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الرابط:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، حدث خطأ في معالجة الرابط:\n`{str(e)}`")
 
 if __name__ == "__main__":
     app.run()
