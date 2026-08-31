@@ -83,6 +83,8 @@ async def handle_incoming_text(client, message):
                 for node in post.get_sidecar_nodes():
                     if not node.is_video:
                         all_urls.append(node.display_url)
+                # تعديل التترتيب ليكون من الأولى للأخيرة (حسب البوست الأصلي)
+                all_urls.reverse()
             else:
                 if post.url:
                     all_urls.append(post.url)
@@ -95,10 +97,10 @@ async def handle_incoming_text(client, message):
                     media_group = [InputMediaPhoto(media=url) for url in chunk]
                     tasks.append(client.send_media_group(chat_id, media=media_group))
                 
-                # إرسال كل الدفعات في نفس اللحظة بشكل متزامن تماماً
+                # إرسال كل الدفعات في نفس اللحظة بشكل متزامن
                 await asyncio.gather(*tasks)
                 
-                # مسح رسالة "جاري إرسال الصور" فور الانتهاء تماماً
+                # مسح رسالة الانتظار فور الانتهاء
                 await msg.delete()
                 return
 
