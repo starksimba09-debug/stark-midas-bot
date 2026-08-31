@@ -22,8 +22,8 @@ user_queries = {}
 async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
-        "• أرسل لي **اسم أي شخصية** وسأبحث لك عن صورها 🖼️\n"
-        "• أرسل لي **رابط (يوتيوب، انستجرام، فيسبوك)** وسأقوم بتحميله 📥"
+        "• أرسل لي **اسم أي شخصية أو شيء** وسأرسل لك صورها مباشرة 🖼️\n"
+        "• أرسل لي **رابط فيديو (يوتيوب، انستجرام ريلز، فيسبوك)** وسأقوم بتحميله 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -31,9 +31,9 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. البحث عن الصور بالأسماء
+    # 1. لو مش رابط، يبقى بحث عن صور مباشرة (بدون يوتيوب نهائياً)
     if not text.startswith("http"):
-        msg = await message.reply_text(f"🔍 جاري البحث عن صور لـ ({text})...")
+        msg = await message.reply_text(f"🔍 جاري جلب الصور لـ ({text})...")
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             api_url = f"https://duckduckgo.com/i.js?q={text}+HD&o=json&p=1"
@@ -51,32 +51,34 @@ async def handle_incoming_text(client, message):
                     await client.send_media_group(chat_id, media=media_group)
                     await msg.delete()
                     return
-        except:
+        except Exception as e:
             pass
-        query = f"ytsearch1:{text} HD"
-    else:
-        # 2. معالجة منشورات الصور في إنستجرام
-        if "instagram.com" in text and ("/p/" in text or not "reel" in text):
-            msg = await message.reply_text("⏳ جاري سحب الصورة من إنستجرام...")
-            try:
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-                r = requests.get(text, headers=headers, timeout=10)
-                soup = BeautifulSoup(r.text, 'html.parser')
-                img_tag = soup.find("meta", property="og:image")
-                
-                if img_tag and img_tag.get("content"):
-                    await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم تنزيل الصورة بنجاح!")
-                    await msg.delete()
-                    return
-            except Exception as e:
-                pass
+        
+        await msg.edit_text("❌ لم يتم العثور على صور، جرب كلمة أخرى.")
+        return
 
-        query = text
+    # 2. لو رابط انستجرام لصورة ثابتة (/p/)
+    if "instagram.com" in text and "/p/" in text:
+        msg = await message.reply_text("⏳ جاري سحب الصورة من إنستجرام...")
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            r = requests.get(text, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            img_tag = soup.find("meta", property="og:image")
+            
+            if img_tag and img_tag.get("content"):
+                await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم تنزيل الصورة بنجاح!")
+                await msg.delete()
+                return
+        except Exception as e:
+            pass
 
+    # 3. روابط الفيديوهات العادية (يوتيوب / ريلز)
+    query = text
     user_queries[chat_id] = query
-    msg = await message.reply_text("🔍 جاري التحضير وجلب الرابط...")
+    msg = await message.reply_text("🔍 جاري التحضير وجلب معلومات الفيديو...")
     
     try:
         ydl_opts = {'cookiefile': 'cookies.txt', 'quiet': True}
@@ -86,7 +88,6 @@ async def handle_incoming_text(client, message):
                 info = info['entries'][0]
             title = info.get('title', 'Media')
             
-        # زر فيديو فقط بدون أي أزرار صوت نهائياً
         keyboard = [
             [InlineKeyboardButton("🎬 تحميل الفيديو (MP4)", callback_data="dl_video")]
         ]
@@ -96,10 +97,10 @@ async def handle_incoming_text(client, message):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الطلب:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الرابط:\n`{str(e)}`")
 
 @app.on_callback_query()
-async def download_cookie(client, callback_query):
+async def download_callback(client, callback_query):
     chat_id = callback_query.message.chat.id
     query = user_queries.get(chat_id)
     
@@ -107,16 +108,15 @@ async def download_cookie(client, callback_query):
         await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة.")
         return
 
-    await callback_query.message.edit_text("⏳ جاري التحميل... اصبر قليلاً")
+    await callback_query.message.edit_text("⏳ جاري التحميل...")
     
     try:
         os.makedirs("downloads", exist_ok=True)
-        # استخدام إعدادات تمنع مشاكل الصيغ المفقودة نهائياً
+        # استخدام صيغة 'best' مباشرة بدون دمج لتجنب الحاجة لـ ffmpeg
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'format': 'best/bestvideo+bestaudio/best',
-            'merge_output_format': 'mp4'
+            'format': 'best'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -124,11 +124,6 @@ async def download_cookie(client, callback_query):
             if 'entries' in res_info:
                 res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
-            # التأكد من امتداد mp4 لو حصل دمج
-            if not filename.endswith('.mp4'):
-                base, _ = os.path.splitext(filename)
-                if os.path.exists(base + '.mp4'):
-                    filename = base + '.mp4'
             
         await callback_query.message.edit_text("📤 جاري إرسال الفيديو...")
         
