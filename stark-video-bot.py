@@ -3,6 +3,18 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+# بيانات البوت (حط بياناتك هنا لو مش معارِفها في ملف تانٍ أو متغيرات بيئة)
+API_ID = 1234567  # استبدلها بـ API ID الخاص بك
+API_HASH = "your_api_hash"
+BOT_TOKEN = "your_bot_token"
+
+app = Client(
+    "stark_video_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
+
 # دالة لجلب الجودات المتاحة وحساب الحجم التقديري
 def get_video_formats(url):
     ydl_opts = {
@@ -46,10 +58,9 @@ async def send_qualities(client, message):
         for res in target_resolutions:
             if res in available_res:
                 text = f"{res} ({available_res[res]['size']})"
-                cb_data = f"dl_{res}_{url}" # تخزين الجودة واللينك
+                cb_data = f"dl_{res}_{url}"
                 keyboard.append([InlineKeyboardButton(text, callback_data=cb_data)])
             else:
-                # لو الجودة مش موجودة، البوت هيعملها توليد تلقائي من أقرب جودة متاحة
                 keyboard.append([InlineKeyboardButton(text=f"{res} (توليد تلقائي ⚙️)", callback_data=f"gen_{res}_{url}")])
                 
         await msg.edit_text(f"اختر الجودة المطلوبة للفيلم:\n**{title}**", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -76,7 +87,6 @@ async def download_callback(client, callback_query):
         }
     elif action == "gen":
         await callback_query.message.edit_text(f"⚙️ الجودة غير متوفرة مباشرة، جاري تحميل أعلى جودة ومعالجتها لـ {res} عبر FFmpeg...")
-        # تحميل أعلى جودة متاحة وضغطها بالارتفاع المطلوب
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -91,12 +101,17 @@ async def download_callback(client, callback_query):
         }
 
     try:
+        os.makedirs("downloads", exist_ok=True)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
         await callback_query.message.edit_text("📤 جاري رفع الفيلم إليك...")
         await client.send_video(callback_query.message.chat.id, video=filename)
-        os.remove(filename) # مسح الملف من السيرفر بعد الإرسال
+        os.remove(filename)
     except Exception as e:
         await callback_query.message.edit_text(f"❌ حدث خطأ أثناء المعالجة أو التحميل: {str(e)}")
+
+# تشغيل البوت
+if __name__ == "__main__":
+    app.run()
