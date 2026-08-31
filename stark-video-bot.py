@@ -3,6 +3,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 import requests
+from bs4 import BeautifulSoup
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -54,26 +55,22 @@ async def handle_incoming_text(client, message):
             pass
         query = f"ytsearch1:{text} HD"
     else:
-        # 2. معالجة روابط إنستجرام (ريلز أو منشورات صور) باستخدام yt-dlp مباشرة لتجنب أخطاء الهيدرز
-        if "instagram.com" in text:
-            msg = await message.reply_text("⏳ جاري سحب المحتوى من إنستجرام...")
+        # 2. معالجة منشورات الصور الثابتة في إنستجرام (/p/) مباشرة
+        if "instagram.com" in text and ("/p/" in text or not "reel" in text):
+            msg = await message.reply_text("⏳ جاري سحب الصورة من إنستجرام...")
             try:
-                ydl_opts = {'cookiefile': 'cookies.txt', 'quiet': True}
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(text, download=False)
-                    # استخراج رابط الصورة المباشر أو الفيديو
-                    media_url = info.get('url') or (info.get('entries') and info['entries'][0].get('url'))
-                    
-                    if media_url:
-                        # التحقق إذا كانت صورة أم فيديو بناءً على الامتداد أو نوع المحتوى
-                        if "jpg" in media_url or "png" in media_url or info.get('_type') == 'url':
-                            await client.send_photo(chat_id, photo=media_url, caption="📥 تم تنزيل الصورة بنجاح!")
-                        else:
-                            await client.send_video(chat_id, video=media_url, caption="📥 تم تنزيل الفيديو بنجاح!", supports_streaming=True)
-                        await msg.delete()
-                        return
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+                r = requests.get(text, headers=headers, timeout=10)
+                soup = BeautifulSoup(r.text, 'html.parser')
+                img_tag = soup.find("meta", property="og:image")
+                
+                if img_tag and img_tag.get("content"):
+                    await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم تنزيل الصورة بنجاح!")
+                    await msg.delete()
+                    return
             except Exception as e:
-                # لو فشل الاستخراج المباشر، هنكمل كـ query عادي للـ yt_dlp تحت
                 pass
 
         query = text
