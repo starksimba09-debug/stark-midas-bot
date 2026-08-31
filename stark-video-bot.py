@@ -1,88 +1,102 @@
 import os
-from pyrogram import Client, filters
 import yt_dlp
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# إعدادات البوت باستخدام متغيرات البيئة
-API_ID = int(os.environ.get("API_ID")) if os.environ.get("API_ID") else None
-API_HASH = os.environ.get("API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+# دالة لجلب الجودات المتاحة وحساب الحجم التقديري
+def get_video_formats(url):
+    ydl_opts = {
+        'cookiefile': 'cookies.txt',
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        formats = info.get('formats', [])
+        
+        available_res = {}
+        target_resolutions = ['360p', '480p', '720p', '1080p']
+        
+        for f in formats:
+            height = f.get('height')
+            if height:
+                res_str = f"{height}p"
+                if res_str in target_resolutions and res_str not in available_res:
+                    filesize = f.get('filesize') or f.get('filesize_approx')
+                    size_mb = f"{round(filesize / (1024 * 1024), 1)} MB" if filesize else "غير معروف"
+                    available_res[res_str] = {
+                        'format_id': f['format_id'],
+                        'size': size_mb
+                    }
+                    
+        return available_res, info.get('title', 'video')
 
-app = Client(
-    "stark_video_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN
-)
-
-@app.on_message(filters.command("start"))
-async def start_command(client, message):
-    await message.reply_text(
-        "👋 أهلاً بك في بوت Stark Video لتحميل الميديا!\n\n"
-        "📥 أرسل رابط المنشور (فيديو أو صورة) الآن، وسأقوم بتحميله وإرساله لك فوراً."
-    )
-
-# دالة استقبال الروابط وتحميل الملفات
-@app.on_message(filters.text & ~filters.command(["start", "help"]))
-async def download_media(client, message):
+# إرسال قائمة الأزرار للمستخدم
+@app.on_message(filters.text & ~filters.command(["start"]))
+async def send_qualities(client, message):
     url = message.text
-    if "http" in url:
-        sent_message = await message.reply_text("📥 جاري فحص وتحميل الملف...")
-        try:
-            ydl_opts = {
-                'outtmpl': 'downloaded_media',
-                'noplaylist': True,
-                'skip_download': False,
-                # السماح بتحميل الصور والفيديوهات وعدم تقييد الاستخراج
-                'extract_flat': False,
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                
-                # لو البوست عبارة عن مجموعة صور (Album/Carousel)
-                if 'entries' in info:
-                    for entry in info['entries']:
-                        filename = ydl.prepare_filename(entry)
-                        if os.path.exists(filename):
-                            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                                await message.reply_photo(filename)
-                            else:
-                                await message.reply_video(filename)
-                            os.remove(filename)
-                    await sent_message.delete()
-                    return
-
-                filename = ydl.prepare_filename(info)
-            
-            # التأكد من مسار الملف وإرساله بالصيغة المناسبة
-            if os.path.exists(filename):
-                if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                    await message.reply_photo(filename, caption="✅ تم تحميل الصورة بنجاح!")
-                else:
-                    await message.reply_video(filename, caption="✅ تم تحميل الفيديو بنجاح!")
-                os.remove(filename)
+    if not url.startswith("http"):
+        return
+        
+    msg = await message.reply_text("⏳ جاري فحص الجودات المتاحة للفيلم...")
+    
+    try:
+        available_res, title = get_video_formats(url)
+        target_resolutions = ['360p', '480p', '720p', '1080p']
+        
+        keyboard = []
+        for res in target_resolutions:
+            if res in available_res:
+                text = f"{res} ({available_res[res]['size']})"
+                cb_data = f"dl_{res}_{url}" # تخزين الجودة واللينك
+                keyboard.append([InlineKeyboardButton(text, callback_data=cb_data)])
             else:
-                # محاولة البحث عن أي ملف تم تنزيله بنفس الاسم الأساسي
-                found = False
-                for file in os.listdir('.'):
-                    if file.startswith('downloaded_media'):
-                        found = True
-                        if file.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                            await message.reply_photo(file, caption="✅ تم تحميل الصورة بنجاح!")
-                        else:
-                            await message.reply_video(file, caption="✅ تم تحميل الملف بنجاح!")
-                        os.remove(file)
-                        break
-                if not found:
-                    raise Exception("لم يتم العثور على ملف قابل للتحميل في هذا الرابط.")
+                # لو الجودة مش موجودة، البوت هيعملها توليد تلقائي من أقرب جودة متاحة
+                keyboard.append([InlineKeyboardButton(text=f"{res} (توليد تلقائي ⚙️)", callback_data=f"gen_{res}_{url}")])
                 
-            await sent_message.delete()
-                
-        except Exception as e:
-            await sent_message.edit_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
-    else:
-        await message.reply_text("⚠️ أهلاً بك! يرجى إرسال رابط صحيح.")
+        await msg.edit_text(f"اختر الجودة المطلوبة للفيلم:\n**{title}**", reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception as e:
+        await msg.edit_text(f"❌ حدث خطأ أثناء جلب البيانات: {str(e)}")
 
-if __name__ == "__main__":
-    print("🤖 Stark Video Bot is running...")
-    app.run()
+# معالجة الضغط على الأزرار والتحميل أو التحويل بـ ffmpeg
+@app.on_callback_query()
+async def download_callback(client, callback_query):
+    data = callback_query.data
+    parts = data.split("_", 2)
+    action = parts[0]
+    res = parts[1]
+    url = parts[2]
+    
+    target_height = res.replace("p", "")
+    
+    if action == "dl":
+        await callback_query.message.edit_text(f"⏳ جاري تحميل جودة {res}...")
+        ydl_opts = {
+            'cookiefile': 'cookies.txt',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': f'bestvideo[height<={target_height}]+bestaudio/best[height<={target_height}]',
+        }
+    elif action == "gen":
+        await callback_query.message.edit_text(f"⚙️ الجودة غير متوفرة مباشرة، جاري تحميل أعلى جودة ومعالجتها لـ {res} عبر FFmpeg...")
+        # تحميل أعلى جودة متاحة وضغطها بالارتفاع المطلوب
+        ydl_opts = {
+            'cookiefile': 'cookies.txt',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'format': 'bestvideo+bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
+            'postprocessor_args': [
+                '-vf', f'scale=-2:{target_height}'
+            ]
+        }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+        await callback_query.message.edit_text("📤 جاري رفع الفيلم إليك...")
+        await client.send_video(callback_query.message.chat.id, video=filename)
+        os.remove(filename) # مسح الملف من السيرفر بعد الإرسال
+    except Exception as e:
+        await callback_query.message.edit_text(f"❌ حدث خطأ أثناء المعالجة أو التحميل: {str(e)}")
