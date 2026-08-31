@@ -1,9 +1,9 @@
 import os
-import requests
-from bs4 import BeautifulSoup
 import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+import requests
+from bs4 import BeautifulSoup
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -23,8 +23,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
         "• أرسل لي **اسم أي شخصية** وسأبحث لك عن صورها 🖼️\n"
-        "• أرسل لي **رابط (انستجرام، فيسبوك، بينتريست، يوتيوب)** وسأقوم بتحميله 📥\n"
-        "• أو أرسل **اسم أغنية** لتحميلها صوت أو فيديو 🎶"
+        "• أرسل لي **رابط (يوتيوب، انستجرام، فيسبوك، بينتريست)** وسأقوم بتحميله 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -32,39 +31,11 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # محاولة سحب الصورة المباشرة لأي رابط
-    if any(domain in text for domain in ["pin.it", "pinterest.com", "instagram.com", "facebook.com", "fb.watch"]):
-        msg = await message.reply_text("⏳ جاري فحص الرابط واستخراج المحتوى...")
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            r = requests.get(text, headers=headers, allow_redirects=True, timeout=8)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            
-            img_tag = soup.find("meta", property="og:image")
-            if img_tag and img_tag.get("content"):
-                img_url = img_tag["content"]
-                # التأكد إن الرابط حقيقي ومش مجرد صورة بروفایل عامة
-                if "http" in img_url:
-                    await client.send_photo(chat_id, photo=img_url, caption="📥 تم جلب الصورة بنجاح!")
-                    await msg.delete()
-                    return
-        except Exception:
-            pass
-
-        # لو رابط انستجرام وطلع بوست صور (مش ريلز/فيديو)، نبلغ المستخدم بذوق بدل إيرور yt-dlp المرعب
-        if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
-            await msg.edit_text("⚠️ هذا الرابط عبارة عن **منشور صور** من انستجرام. إنستجرام يحظر تحميل صور المنشورات الثابتة بروابط مباشرة حالياً. يجدر الإرسال لو كان (Reels/فيديو) أو اسم شخصية للبحث عنه!")
-            return
-
-    # البحث عن الشخصيات أو الأسماء
+    # 1. البحث عن الشخصيات والأسماء
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري البحث عن صور لـ ({text})...")
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
             api_url = f"https://duckduckgo.com/i.js?q={text}+HD&o=json&p=1"
             res = requests.get(api_url, headers=headers, timeout=10).json()
             results = res.get("results", [])
@@ -80,14 +51,42 @@ async def handle_incoming_text(client, message):
                     await client.send_media_group(chat_id, media=media_group)
                     await msg.delete()
                     return
-            query = f"ytsearch1:{text} 4K wallpaper"
         except:
-            query = f"ytsearch1:{text} HD"
+            pass
+        query = f"ytsearch1:{text} HD"
     else:
+        # 2. معالجة روابط الصور الثابتة من إنستجرام (/p/)
+        if "instagram.com" in text and ("/p/" in text):
+            msg = await message.reply_text("⏳ جاري استخراج الصورة من إنستجرام...")
+            try:
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                
+                # قراءة الكوكيز مباشرة من ملف cookies.txt
+                cookies = {}
+                if os.path.exists("cookies.txt"):
+                    with open("cookies.txt", "r", encoding="utf-8") as f:
+                        for line in f:
+                            if not line.startswith('#') and len(line.strip()) > 0:
+                                parts = line.strip().split('\t')
+                                if len(parts) >= 7:
+                                    cookies[parts[5]] = parts[6]
+
+                r = requests.get(text, headers=headers, cookies=cookies, timeout=10)
+                soup = BeautifulSoup(r.text, 'html.parser')
+                img_tag = soup.find("meta", property="og:image")
+                
+                if img_tag and img_tag.get("content"):
+                    await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم تنزيل الصورة بنجاح!")
+                    await msg.delete()
+                    return
+            except Exception as e:
+                await msg.edit_text(f"❌ فشل سحب الصورة: {str(e)}")
+                return
+
         query = text
 
     user_queries[chat_id] = query
-    msg = await message.reply_text("🔍 جاري التحضير للتحميل...")
+    msg = await message.reply_text("🔍 جاري التحضير وجلب خيارات التحميل...")
     
     try:
         ydl_opts = {'cookiefile': 'cookies.txt', 'quiet': True}
@@ -107,7 +106,7 @@ async def handle_incoming_text(client, message):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        await msg.edit_text("❌ عذراً، هذا الرابط إما أنه صورة فقط أو غير مدعوم للفيديوهات حالياً.")
+        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الرابط:\n`{str(e)}`")
 
 @app.on_callback_query()
 async def download_callback(client, callback_query):
@@ -140,12 +139,13 @@ async def download_callback(client, callback_query):
         if data == "dl_audio":
             await client.send_audio(chat_id, audio=filename)
         else:
-            await client.send_video(chat_id, video=filename)
+            await client.send_video(chat_id, video=filename, supports_streaming=True)
             
-        os.remove(filename)
+        if os.path.exists(filename):
+            os.remove(filename)
         await callback_query.message.delete()
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ خطأ أثناء التحميل: تأكد من صحة الرابط.")
+        await callback_query.message.edit_text(f"❌ خطأ أثناء التحميل: {str(e)}")
 
 if __name__ == "__main__":
     app.run()
