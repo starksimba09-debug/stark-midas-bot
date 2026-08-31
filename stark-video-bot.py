@@ -23,7 +23,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
         "• أرسل لي **اسم أي شخصية** وسأبحث لك عن صورها 🖼️\n"
-        "• أرسل لي **رابط بينتريست أو إنستجرام أو يوتيوب** وسأقوم بتحميله 📥\n"
+        "• أرسل لي **رابط (انستجرام، فيسبوك، بينتريست، يوتيوب)** وسأقوم بتحميله 📥\n"
         "• أو أرسل **اسم أغنية** لتحميلها صوت أو فيديو 🎶"
     )
 
@@ -32,56 +32,27 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. معالجة روابط بينتريست (Pinterest)
-    if "pin.it" in text or "pinterest.com" in text:
-        msg = await message.reply_text("⏳ جاري استخراج الصورة من Pinterest...")
+    # معالجة روابط الصور المباشرة (Pinterest, Instagram, Facebook) عبر السحب المباشر لمنع أخطاء yt-dlp
+    if any(domain in text for domain in ["pin.it", "pinterest.com", "instagram.com", "facebook.com", "fb.watch"]):
+        msg = await message.reply_text("⏳ جاري استخراج الوسائط من الرابط...")
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             r = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
             soup = BeautifulSoup(r.text, 'html.parser')
+            
+            # محاولة البحث عن الصورة الأساسية في الـ Meta Tags
             img_tag = soup.find("meta", property="og:image")
             if img_tag and img_tag.get("content"):
                 img_url = img_tag["content"]
-                await client.send_photo(chat_id, photo=img_url, caption="📌 صورة من Pinterest")
+                await client.send_photo(chat_id, photo=img_url, caption="📥 تم جلب الصورة بنجاح!")
                 await msg.delete()
                 return
-            else:
-                raise Exception("لم يتم العثور على الصورة داخل الصفحة.")
-        except Exception as e:
-            await msg.edit_text(f"❌ عذراً، فشل تحميل رابط Pinterest:\n`{str(e)}`")
-            return
+        except Exception:
+            pass  # لو فشلت الطريقة المباشرة، يكمل للتحميل العادي لو كان فيديو
 
-    # 2. معالجة روابط إنستجرام (Instagram) للصور والمنشورات بدقة
-    if "instagram.com" in text:
-        msg = await message.reply_text("⏳ جاري استخراج الوسائط من Instagram...")
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            r = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            
-            # محاولة جلب الصورة الأساسية أو الفيديو من بيانات المنشور (OpenGraph)
-            img_tag = soup.find("meta", property="og:image")
-            video_tag = soup.find("meta", property="og:video")
-            
-            if video_tag and video_tag.get("content"):
-                # لو فيديو يتم تحميله عبر yt-dlp المخصص
-                pass
-            elif img_tag and img_tag.get("content"):
-                img_url = img_tag["content"]
-                await client.send_photo(chat_id, photo=img_url, caption="📸 صورة من Instagram")
-                await msg.delete()
-                return
-            else:
-                # حل بديل عبر yt-dlp لو المنشور فيديو
-                pass
-        except Exception as e:
-            pass # لو فشلت الطريقة المباشرة، يكمل للـ yt-dlp العادي
-
-    # 3. البحث عن الشخصيات أو الأسماء
+    # البحث عن الشخصيات أو الأسماء
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري البحث عن صور لـ ({text})...")
         try:
@@ -130,7 +101,7 @@ async def handle_incoming_text(client, message):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        await msg.edit_text(f"❌ حدث خطأ أو الوسائط غير مدعومة:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، هذا الرابط يحتوي على صورة فقط أو غير مدعوم للفيديوهات:\n`{str(e)}`")
 
 @app.on_callback_query()
 async def download_callback(client, callback_query):
