@@ -16,6 +16,14 @@ app = Client(
 
 user_urls = {}
 
+# الرد على أمر start
+@app.on_message(filters.command("start"))
+async def start_command(client, message):
+    await message.reply_text(
+        "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
+        "أرسل لي الآن أي رابط فيديو أو صورة من **إنستجرام** أو **فيسبوك** وسأقوم بتحميله لك فوراً 🚀"
+    )
+
 def get_media_info(url):
     ydl_opts = {
         'cookiefile': 'cookies.txt',
@@ -40,7 +48,7 @@ async def handle_incoming_link(client, message):
     elif "facebook.com" in url or "fb.watch" in url:
         platform = "فيسبوك 📘"
         
-    msg = await message.reply_text(f"🔍 تم التعرف على الرابط ({platform}). جاري فحص الجودات المتاحة...")
+    msg = await message.reply_text(f"🔍 تم التعرف على الرابط ({platform}). جاري فحص الملف...")
     
     try:
         info = get_media_info(url)
@@ -48,7 +56,7 @@ async def handle_incoming_link(client, message):
         ext = info.get('ext')
         formats = info.get('formats')
         
-        # دعم تحميل الصور من إنستجرام
+        # تحميل الصور من إنستجرام
         if not formats and (ext in ['jpg', 'png', 'jpeg'] or '_type' in info and info['_type'] == 'playlist'):
             await msg.edit_text("⏳ جاري تحميل الصور...")
             ydl_opts = {'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(id)s.%(ext)s'}
@@ -69,7 +77,7 @@ async def handle_incoming_link(client, message):
                         await msg.delete()
             return
 
-        # تجميع الجودات المتاحة ومساحاتها
+        # فحص الجودات المتاحة بدون الحاجة لـ FFmpeg
         available_res = {}
         target_resolutions = ['360p', '480p', '720p', '1080p']
         
@@ -85,16 +93,31 @@ async def handle_incoming_link(client, message):
                             'size': size_mb
                         }
         
-        # إنشاء الأزرار للـ 4 جودات المطلوبة دائماً
+        # لو مفيش جودات متعددة (فيديو قصير/ريل)، حمله مباشرة
+        if not available_res:
+            await msg.edit_text("⏳ جاري تحميل الفيديو مباشرة...")
+            ydl_opts = {
+                'cookiefile': 'cookies.txt',
+                'outtmpl': 'downloads/%(title)s.%(ext)s',
+                'format': 'best'
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                r_info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(r_info)
+            await client.send_video(chat_id, video=filename)
+            os.remove(filename)
+            await msg.delete()
+            return
+
+        # عرض الأزرار الأربعة المتاحة
         keyboard = []
         for res in target_resolutions:
             if res in available_res:
-                # الجودة موجودة مباشرة وتعرض بمساحتها
                 text = f"{res} ({available_res[res]['size']})"
                 keyboard.append([InlineKeyboardButton(text, callback_data=f"dl_{res}")])
             else:
-                # الجودة مش موجودة، البوت سيعمل لها توليد تلقائي عند الضغط
-                keyboard.append([InlineKeyboardButton(text=f"{res} (توليد تلقائي ⚙️)", callback_data=f"gen_{res}")])
+                # لو الجودة مش موجودة، البوت هيختار أفضل جودة قريبة متاحة تلقائياً
+                keyboard.append([InlineKeyboardButton(text=f"{res} (أقرب جودة متاحة ⚡)", callback_data=f"dl_{res}")])
                 
         await msg.edit_text(f"🎬 **{title}**\n\nاختر الجودة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard))
         
@@ -112,26 +135,17 @@ async def download_callback(client, callback_query):
         return
 
     parts = data.split("_")
-    action = parts[0]
     res = parts[1]
     target_height = res.replace("p", "")
     
-    if action == "dl":
-        await callback_query.message.edit_text(f"⏳ جاري تحميل جودة {res}...")
-        ydl_opts = {
-            'cookiefile': 'cookies.txt',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'format': f'bestvideo[height<={target_height}]+bestaudio/best[height<={target_height}]',
-        }
-    elif action == "gen":
-        await callback_query.message.edit_text(f"⚙️ الجودة غير متوفرة مباشرة، جاري معالجة الفيديو لـ {res} عبر FFmpeg...")
-        ydl_opts = {
-            'cookiefile': 'cookies.txt',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'format': 'bestvideo+bestaudio/best',
-            'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
-            'postprocessor_args': ['-vf', f'scale=-2:{target_height}']
-        }
+    await callback_query.message.edit_text(f"⏳ جاري تحميل جودة {res}...")
+    
+    # استخدام تنسيق آمن لا يتطلب وجود FFmpeg
+    ydl_opts = {
+        'cookiefile': 'cookies.txt',
+        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'format': f'best[height<={target_height}]/best',
+    }
 
     try:
         os.makedirs("downloads", exist_ok=True)
@@ -143,7 +157,7 @@ async def download_callback(client, callback_query):
         await client.send_video(chat_id, video=filename)
         os.remove(filename)
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ حدث خطأ أثناء التحميل أو المعالجة: {str(e)}")
+        await callback_query.message.edit_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
 
 if __name__ == "__main__":
     app.run()
