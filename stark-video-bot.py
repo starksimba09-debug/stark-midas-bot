@@ -20,7 +20,7 @@ user_queries = {}
 async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
-        "• أرسل لي **رابط** (إنستجرام، فيسبوك، أو يوتيوب)\n"
+        "• أرسل لي **رابط** (إنستجرام، فيسبوك، بينتريست، يوتيوب)\n"
         "• أو أرسل لي **اسم أو كلمات الأغنية** وسأبحث عنها وأقوم بتحميلها لك فوراً 🎶🚀"
     )
 
@@ -29,14 +29,11 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # لو النص عبارة عن رابط
+    # تحديد ما إذا كان رابطاً أو نص بحث
     if text.startswith("http"):
         query = text
-        source_type = "url"
     else:
-        # لو النص عبارة عن اسم أغنية أو كلمات بحث، بنخليه يبحث عنها في يوتيوب تلقائياً
         query = f"ytsearch1:{text}"
-        source_type = "search"
         
     user_queries[chat_id] = query
     
@@ -51,29 +48,54 @@ async def handle_incoming_text(client, message):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(query, download=False)
             
-            # لو البحث جاب قائمة نتائج (معناها بحث نصي)
+            # معالجة نتائج البحث النصي بأمان
             if 'entries' in info:
-                info = info['entries'][0]
+                entries = info.get('entries')
+                if not entries:
+                    await msg.edit_text("❌ عذراً، لم يتم العثور على أي نتائج مطابقة لبحثك.")
+                    return
+                info = entries[0]
                 
-            title = info.get('title', 'Audio/Video')
+            title = info.get('title', 'Media File')
             duration = info.get('duration_string', '')
+            ext = info.get('ext')
+            formats = info.get('formats', [])
             
-        # لو الرابط صورة من إنستجرام
-        ext = info.get('ext')
-        formats = info.get('formats', [])
-        if not formats and ext in ['jpg', 'png', 'jpeg']:
-            await msg.edit_text("⏳ جاري تحميل الصورة...")
-            ydl_opts = {'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(id)s.%(ext)s'}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        # التحقق مما إذا كانت الملفات عبارة عن صورة مباشرة (مثل بينتريست أو صور إنستجرام)
+        if not formats or ext in ['jpg', 'png', 'jpeg'] or 'pinterest' in query.lower():
+            await msg.edit_text("⏳ جاري تحميل الصورة بدقة عالية...")
+            
+            # استخدام إعدادات مخصصة لتحميل الصور وتجنب خطأ صيغ الفيديو
+            img_opts = {
+                'cookiefile': 'cookies.txt',
+                'outtmpl': 'downloads/%(id)s.%(ext)s',
+                'format': 'best'
+            }
+            
+            with yt_dlp.YoutubeDL(img_opts) as ydl:
                 res_info = ydl.extract_info(query, download=True)
+                if 'entries' in res_info and res_info['entries']:
+                    res_info = res_info['entries'][0]
+                
                 filename = ydl.prepare_filename(res_info)
+                
+                # التأكد من امتداد الصورة لو الـ ydl غيره لـ webp أو حاجة تانية
+                if not os.path.exists(filename):
+                    # البحث عن أي ملف بنفس المعرف في مجلد التحميلات
+                    for f in os.listdir("downloads"):
+                        if f.startswith(str(res_info.get('id', ''))):
+                            filename = os.path.join("downloads", f)
+                            break
+                            
                 if os.path.exists(filename):
-                    await client.send_photo(chat_id, photo=filename)
+                    await client.send_photo(chat_id, photo=filename, caption=f"📌 {title}")
                     os.remove(filename)
                     await msg.delete()
-            return
+                    return
+                else:
+                    raise Exception("فشل العثور على ملف الصورة المحملة.")
 
-        # لو اللي تم طلبه بحث عن أغنية أو فيديو، نعرض أزرار التحميل (صوت MP3 أو فيديو)
+        # لو النتيجة فيديو أو أغنية، اعرض أزرار الاختيار
         keyboard = [
             [InlineKeyboardButton("🎵 تحميل صوت (MP3)", callback_data="dl_audio")],
             [InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="dl_video")]
@@ -85,7 +107,7 @@ async def handle_incoming_text(client, message):
         )
         
     except Exception as e:
-        await msg.edit_text(f"❌ لم يتم العثور على نتائج مطابقة أو حدث خطأ:\n`{str(e)}`")
+        await msg.edit_text(f"❌ حدث خطأ أثناء المعالجة:\n`{str(e)}`")
 
 @app.on_callback_query()
 async def download_callback(client, callback_query):
@@ -94,7 +116,7 @@ async def download_callback(client, callback_query):
     
     query = user_queries.get(chat_id)
     if not query:
-        await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة، أرسل اسم الأغنية أو الرابط مرة أخرى.")
+        await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة، أرسل الرابط مرة أخرى.")
         return
 
     await callback_query.message.edit_text("⏳ جاري التحميل والمعالجة، يُرجى الانتظار...")
@@ -103,14 +125,12 @@ async def download_callback(client, callback_query):
         os.makedirs("downloads", exist_ok=True)
         
         if data == "dl_audio":
-            # تحميل الصوت بصيغة مريحة
             ydl_opts = {
                 'cookiefile': 'cookies.txt',
                 'outtmpl': 'downloads/%(title)s.%(ext)s',
                 'format': 'bestaudio/best',
             }
         else:
-            # تحميل الفيديو بأفضل جودة آمنة
             ydl_opts = {
                 'cookiefile': 'cookies.txt',
                 'outtmpl': 'downloads/%(title)s.%(ext)s',
@@ -118,10 +138,14 @@ async def download_callback(client, callback_query):
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=True)
-            if 'entries' in info:
+            info = yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'quiet': True}).extract_info(query, download=False)
+            if 'entries' in info and info['entries']:
                 info = info['entries'][0]
-            filename = ydl.prepare_filename(info)
+                
+            res_info = ydl.extract_info(query, download=True)
+            if 'entries' in res_info and res_info['entries']:
+                res_info = res_info['entries'][0]
+            filename = ydl.prepare_filename(res_info)
             
         await callback_query.message.edit_text("📤 جاري الإرسال...")
         
