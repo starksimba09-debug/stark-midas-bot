@@ -20,24 +20,25 @@ user_queries = {}
 async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
+        "• أرسل لي **اسم شخصية أو فنان أو شخصية فيلم** وسأبحث عنها وأجلب لك صورتها فوراً 🖼️\n"
         "• أرسل لي **رابط** (إنستجرام، فيسبوك، بينتريست، يوتيوب)\n"
-        "• أو أرسل لي **اسم أو كلمات الأغنية** وسأبحث عنها وأقوم بتحميلها لك فوراً 🎶🚀"
+        "• أو أرسل **اسم أغنية أو كلمات** للبحث عنها وتحميلها 🎶"
     )
 
-@app.on_message(filters.text & ~filters.command(["start"]))
+@app.on_message(filters.text & ~filters.command("start"))
 async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # تحديد ما إذا كان رابطاً أو نص بحث
+    # تحديد نوع الطلب (رابط أم بحث نصي عن شخصية/صورة/أغنية)
     if text.startswith("http"):
         query = text
     else:
-        query = f"ytsearch1:{text}"
+        # لو المستخدم كتب اسم شخصية أو شيء عام للبحث عن صورته، نستخدم محرك البحث بصيغة صور
+        query = f"ytsearch1:{text} صورة شخصية"
         
     user_queries[chat_id] = query
-    
-    msg = await message.reply_text("🔍 جاري البحث والتحضير...")
+    msg = await message.reply_text("🔍 جاري البحث عن المطلوب...")
     
     try:
         ydl_opts = {
@@ -48,66 +49,82 @@ async def handle_incoming_text(client, message):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(query, download=False)
             
-            # معالجة نتائج البحث النصي بأمان
             if 'entries' in info:
                 entries = info.get('entries')
                 if not entries:
-                    await msg.edit_text("❌ عذراً، لم يتم العثور على أي نتائج مطابقة لبحثك.")
+                    await msg.edit_text("❌ لم يتم العثور على نتائج مطابقة.")
                     return
                 info = entries[0]
                 
-            title = info.get('title', 'Media File')
-            duration = info.get('duration_string', '')
+            title = info.get('title', text)
             ext = info.get('ext')
             formats = info.get('formats', [])
             
-        # التحقق مما إذا كانت الملفات عبارة عن صورة مباشرة (مثل بينتريست أو صور إنستجرام)
-        if not formats or ext in ['jpg', 'png', 'jpeg'] or 'pinterest' in query.lower():
-            await msg.edit_text("⏳ جاري تحميل الصورة بدقة عالية...")
+        # التحقق إذا كان الرابط أو النتيجة تخص صورة (أو بحث شخصية)
+        if not formats or ext in ['jpg', 'png', 'jpeg'] or 'pinterest' in query.lower() or not text.startswith("http"):
+            await msg.edit_text(f"⏳ جاري جلب صورة الشخصية ({text})...")
             
-            # استخدام إعدادات مخصصة لتحميل الصور وتجنب خطأ صيغ الفيديو
             img_opts = {
                 'cookiefile': 'cookies.txt',
                 'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'format': 'best'
+                'format': 'best',
+                # في حالة البحث النصي، نجبر yt-dlp على محاولة استخراج صدارة المعاينة كصورة
+                'skip_download': False
             }
             
-            with yt_dlp.YoutubeDL(img_opts) as ydl:
-                res_info = ydl.extract_info(query, download=True)
+            # لو كان بحث نصي لشخصية، نستخدم الكويري الأصلي المباشر للبحث في صور جوجل أو بينتريست عبر yt-dlp لو أمكن، أو استخراج المعاينة
+            actual_query = f"https://www.google.com/search?q={text}+image&tbm=isch" if not text.startswith("http") else query
+            
+            # بديل أدق وأسرع للبحث بالاسم لجلب صورة الشخصية مباشرة من يوتيوب/جوجل المعاينة
+            search_target = f"ytsearch1:{text} profile picture" if not text.startswith("http") else query
+            
+            with yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'quiet': True}) as ydl2:
+                try:
+                    s_info = ydl2.extract_info(search_target, download=False)
+                    if 'entries' in s_info and s_info['entries']:
+                        s_info = s_info['entries'][0]
+                    thumbnail_url = s_info.get('thumbnail')
+                    
+                    if thumbnail_url:
+                        # لو لقينا صورة مصغرة ممتازة للشخصية، نبعتها مباشرة
+                        await client.send_photo(chat_id, photo=thumbnail_url, caption=👤 الشخصية: {text})
+                        await msg.delete()
+                        return
+                except:
+                    pass
+
+            # لو فشلت الطريقة السابقة، نحملها كملف عادي
+            with yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(id)s.%(ext)s'}) as ydl3:
+                res_info = ydl3.extract_info(query, download=True)
                 if 'entries' in res_info and res_info['entries']:
                     res_info = res_info['entries'][0]
                 
-                filename = ydl.prepare_filename(res_info)
-                
-                # التأكد من امتداد الصورة لو الـ ydl غيره لـ webp أو حاجة تانية
+                filename = ydl3.prepare_filename(res_info)
                 if not os.path.exists(filename):
-                    # البحث عن أي ملف بنفس المعرف في مجلد التحميلات
                     for f in os.listdir("downloads"):
                         if f.startswith(str(res_info.get('id', ''))):
                             filename = os.path.join("downloads", f)
                             break
                             
                 if os.path.exists(filename):
-                    await client.send_photo(chat_id, photo=filename, caption=f"📌 {title}")
+                    await client.send_photo(chat_id, photo=filename, caption=f"👤 {text}")
                     os.remove(filename)
                     await msg.delete()
                     return
-                else:
-                    raise Exception("فشل العثور على ملف الصورة المحملة.")
 
-        # لو النتيجة فيديو أو أغنية، اعرض أزرار الاختيار
+        # لو النتيجة فيديو أو أغنية عادية
         keyboard = [
             [InlineKeyboardButton("🎵 تحميل صوت (MP3)", callback_data="dl_audio")],
             [InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="dl_video")]
         ]
         
         await msg.edit_text(
-            f"🎵 **تم العثور على النتيجة:**\n`{title}`\n⏱ المدة: {duration}\n\nاختر صيغة التحميل المطلوبة:",
+            f"🎵 **تم العثور على النتيجة:**\n`{title}`\n\nاختر صيغة التحميل المطلوبة:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         
     except Exception as e:
-        await msg.edit_text(f"❌ حدث خطأ أثناء المعالجة:\n`{str(e)}`")
+        await msg.edit_text(f"❌ حدث خطأ أثناء البحث:\n`{str(e)}`")
 
 @app.on_callback_query()
 async def download_callback(client, callback_query):
@@ -116,32 +133,20 @@ async def download_callback(client, callback_query):
     
     query = user_queries.get(chat_id)
     if not query:
-        await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة، أرسل الرابط مرة أخرى.")
+        await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة، أرسل الاسم أو الرابط مرة أخرى.")
         return
 
-    await callback_query.message.edit_text("⏳ جاري التحميل والمعالجة، يُرجى الانتظار...")
+    await callback_query.message.edit_text("⏳ جاري التحميل والمعالجة...")
     
     try:
         os.makedirs("downloads", exist_ok=True)
         
         if data == "dl_audio":
-            ydl_opts = {
-                'cookiefile': 'cookies.txt',
-                'outtmpl': 'downloads/%(title)s.%(ext)s',
-                'format': 'bestaudio/best',
-            }
+            ydl_opts = {'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(title)s.%(ext)s', 'format': 'bestaudio/best'}
         else:
-            ydl_opts = {
-                'cookiefile': 'cookies.txt',
-                'outtmpl': 'downloads/%(title)s.%(ext)s',
-                'format': 'best[height<=720]/best',
-            }
+            ydl_opts = {'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(title)s.%(ext)s', 'format': 'best[height<=720]/best'}
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = yt_dlp.YoutubeDL({'cookiefile': 'cookies.txt', 'quiet': True}).extract_info(query, download=False)
-            if 'entries' in info and info['entries']:
-                info = info['entries'][0]
-                
             res_info = ydl.extract_info(query, download=True)
             if 'entries' in res_info and res_info['entries']:
                 res_info = res_info['entries'][0]
