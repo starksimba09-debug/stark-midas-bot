@@ -3,10 +3,9 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# بيانات البوت (حط بياناتك هنا لو مش معارِفها في ملف تانٍ أو متغيرات بيئة)
-API_ID = 1234567  # استبدلها بـ API ID الخاص بك
-API_HASH = "your_api_hash"
-BOT_TOKEN = "your_bot_token"
+API_ID = 37361961
+API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
+BOT_TOKEN = "Nq-e5dBu0Ub"
 
 app = Client(
     "stark_video_bot",
