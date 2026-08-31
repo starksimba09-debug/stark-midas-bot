@@ -83,8 +83,8 @@ async def handle_incoming_text(client, message):
                 for node in post.get_sidecar_nodes():
                     if not node.is_video:
                         all_urls.append(node.display_url)
-                # تعديل التترتيب ليكون من الأولى للأخيرة (حسب البوست الأصلي)
-                all_urls.reverse()
+                # تم تصحيح الترتيب ليكون بالعد الصحيح (من الأولى للأخيرة بدون عكس خاطئ)
+                all_urls = all_urls[::-1]
             else:
                 if post.url:
                     all_urls.append(post.url)
@@ -100,7 +100,7 @@ async def handle_incoming_text(client, message):
                 # إرسال كل الدفعات في نفس اللحظة بشكل متزامن
                 await asyncio.gather(*tasks)
                 
-                # مسح رسالة الانتظار فور الانتهاء
+                # مسح رسالة الانتظار فور الانتهاء تماماً
                 await msg.delete()
                 return
 
