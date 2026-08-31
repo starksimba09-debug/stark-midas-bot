@@ -3,6 +3,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
+from bs4 import BeautifulSoup
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -20,7 +21,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل المباشر!\n\n"
         "• أرسل لي **اسم أي شخصية** وسأرسل لك صورها مباشرة 🖼️\n"
-        "• أرسل لي **رابط إنستجرام أو فيسبوك** وسأقوم بتحميله وإرساله فوراً 📥"
+        "• أرسل لي **رابط إنستجرام (ريلز أو صور)** وسأقوم بإرساله فوراً 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -54,15 +55,30 @@ async def handle_incoming_text(client, message):
         await msg.edit_text("❌ لم يتم العثور على صور، جرب كلمة أخرى.")
         return
 
-    # 2. منع يوتيوب نهائياً والتنبيه لو تم إرساله
+    # 2. منع يوتيوب نهائياً
     if "youtube.com" in text or "youtu.be" in text:
-        await message.reply_text("❌ تم إلغاء دعم يوتيوب بناءً على طلبك، أرسل روابط إنستجرام أو فيسبوك فقط.")
+        await message.reply_text("❌ تم إلغاء دعم يوتيوب، أرسل روابط إنستجرام أو فيسبوك فقط.")
         return
 
-    # 3. التعامل مع روابط إنستجرام وفيسبوك فقط
-    msg = await message.reply_text("⏳ جاري التحميل والإرسال، ثوانٍ معدودة...")
+    # 3. معالجة روابط إنستجرام (لو منشور صور /p/ سحبه كصورة، لو ريلز كفيديو)
+    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
     
     try:
+        if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
+            # سحب الصورة مباشرة من meta tags الخاصة بالمنشور
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            r = requests.get(text, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            img_tag = soup.find("meta", property="og:image")
+            
+            if img_tag and img_tag.get("content"):
+                await client.send_photo(chat_id, photo=img_tag["content"], caption="📥 تم إرسال الصورة بنجاح!")
+                await msg.delete()
+                return
+
+        # 4. لو فيديو (ريلز إنستجرام أو فيسبوك) يتم تحميله بـ yt-dlp
         os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
@@ -77,17 +93,14 @@ async def handle_incoming_text(client, message):
                 res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
             
-        if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-            await client.send_photo(chat_id, photo=filename, caption="📥 تم تنزيل الصورة بنجاح!")
-        else:
-            await client.send_video(chat_id, video=filename, supports_streaming=True)
+        await client.send_video(chat_id, video=filename, supports_streaming=True)
             
         if os.path.exists(filename):
             os.remove(filename)
         await msg.delete()
         
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، لم أتمكن من تحميل هذا الرابط:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الرابط:\n`{str(e)}`")
 
 if __name__ == "__main__":
     app.run()
