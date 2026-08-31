@@ -69,8 +69,8 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    # رسالة واضحة تؤكد أنه يجهز الصور
-    msg = await message.reply_text("⏳ جاري تجهيز الصور...")
+    # رسالة الانتظار أثناء التجهيز والإرسال
+    msg = await message.reply_text("⏳ جاري إرسال الصور...")
 
     try:
         # 3. معالجة منشورات الصور في إنستجرام (/p/)
@@ -88,13 +88,18 @@ async def handle_incoming_text(client, message):
                     all_urls.append(post.url)
             
             if all_urls:
-                await msg.delete()
-                # إرسال الدفعات (كل 10 صور مع بعض في نفس اللحظة تقريبا)
+                # تجهيز كل الألبومات دفعة واحدة
+                tasks = []
                 for i in range(0, len(all_urls), 10):
                     chunk = all_urls[i:i+10]
                     media_group = [InputMediaPhoto(media=url) for url in chunk]
-                    await client.send_media_group(chat_id, media=media_group)
-                    await asyncio.sleep(0.5) # فاصل زمني بسيط جداً لتجنب ضغط التيليجرام ولتظهر معاً
+                    tasks.append(client.send_media_group(chat_id, media=media_group))
+                
+                # إرسال كل الدفعات في نفس اللحظة بشكل متزامن تماماً
+                await asyncio.gather(*tasks)
+                
+                # مسح رسالة "جاري إرسال الصور" فور الانتهاء تماماً
+                await msg.delete()
                 return
 
         # 4. الريلز والفيديوهات
