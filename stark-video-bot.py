@@ -3,6 +3,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
+import instaloader
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -15,12 +16,21 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
+# إعدادات instaloader
+L = instaloader.Instaloader(
+    download_videos=False,
+    download_video_thumbnails=False,
+    download_geotags=False,
+    download_comments=False,
+    save_metadata=False
+)
+
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في البوت!\n\n"
         "• أرسل اسم أي شخصية لجلب صورها 🖼️\n"
-        "• أرسل رابط إنستجرام أو فيسبوك للتحميل المباشر 📥"
+        "• أرسل رابط إنستجرام (صورة أو ريلز) أو فيسبوك للتحميل 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -59,17 +69,41 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    msg = await message.reply_text("⏳ جاري التحميل والإرسال...")
+    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
 
     try:
+        # 3. معالجة منشورات الصور في إنستجرام (/p/)
+        if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
+            shortcode = text.split("/p/")[-1].split("/tv/")[-1].split("/")[0].split("?")[0]
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
+            
+            # التحقق لو البوست فيه صور متعددة أو صورة واحدة
+            if post.mediacount > 1:
+                media_group = []
+                for node in post.get_sidecar_nodes():
+                    if node.is_video:
+                        continue
+                    media_group.append(InputMediaPhoto(media=node.display_url))
+                    if len(media_group) >= 10:  # أقصى حد تيليجرام
+                        break
+                if media_group:
+                    await client.send_media_group(chat_id, media=media_group)
+                    await msg.delete()
+                    return
+            else:
+                img_url = post.url
+                if img_url:
+                    await client.send_photo(chat_id, photo=img_url, caption="📥 تم تنزيل الصورة بنجاح!")
+                    await msg.delete()
+                    return
+
+        # 4. الريلز والفيديوهات (عبر yt-dlp باستخدام الكوكيز)
         os.makedirs("downloads", exist_ok=True)
-        # إعدادات متقدمة لـ yt-dlp تتعامل مع منشورات إنستجرام والفيديوهات بكل سلاسة
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'format': 'best',
-            'quiet': True,
-            'extract_flat': False
+            'quiet': True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -78,18 +112,14 @@ async def handle_incoming_text(client, message):
                 res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
             
-        # التحقق من الامتداد للإرسال الصحيح (صورة أو فيديو)
-        if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-            await client.send_photo(chat_id, photo=filename, caption="📥 تم تنزيل الصورة بنجاح!")
-        else:
-            await client.send_video(chat_id, video=filename, supports_streaming=True)
+        await client.send_video(chat_id, video=filename, supports_streaming=True)
             
         if os.path.exists(filename):
             os.remove(filename)
         await msg.delete()
         
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، لم يتمكن البوت من تحميل هذا الرابط:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، لم يتمكن البوت من تنزيل هذا الرابط:\n`{str(e)}`")
 
 if __name__ == "__main__":
     app.run()
