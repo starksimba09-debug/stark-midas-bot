@@ -14,67 +14,106 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# دالة لجلب الجودات المتاحة وحساب الحجم التقديري
-def get_video_formats(url):
+user_urls = {}
+
+def get_media_info(url):
     ydl_opts = {
         'cookiefile': 'cookies.txt',
+        'quiet': True,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        formats = info.get('formats', [])
-        
-        available_res = {}
-        target_resolutions = ['360p', '480p', '720p', '1080p']
-        
-        for f in formats:
-            height = f.get('height')
-            if height:
-                res_str = f"{height}p"
-                if res_str in target_resolutions and res_str not in available_res:
-                    filesize = f.get('filesize') or f.get('filesize_approx')
-                    size_mb = f"{round(filesize / (1024 * 1024), 1)} MB" if filesize else "غير معروف"
-                    available_res[res_str] = {
-                        'format_id': f['format_id'],
-                        'size': size_mb
-                    }
-                    
-        return available_res, info.get('title', 'video')
+        return info
 
-# إرسال قائمة الأزرار للمستخدم
 @app.on_message(filters.text & ~filters.command(["start"]))
-async def send_qualities(client, message):
+async def handle_incoming_link(client, message):
     url = message.text
     if not url.startswith("http"):
         return
         
-    msg = await message.reply_text("⏳ جاري فحص الجودات المتاحة للفيلم...")
+    chat_id = message.chat.id
+    user_urls[chat_id] = url
+    
+    platform = "منصة أخرى"
+    if "instagram.com" in url:
+        platform = "إنستجرام 📸"
+    elif "facebook.com" in url or "fb.watch" in url:
+        platform = "فيسبوك 📘"
+        
+    msg = await message.reply_text(f"🔍 تم التعرف على الرابط ({platform}). جاري فحص الجودات المتاحة...")
     
     try:
-        available_res, title = get_video_formats(url)
+        info = get_media_info(url)
+        title = info.get('title', 'Media')
+        ext = info.get('ext')
+        formats = info.get('formats')
+        
+        # دعم تحميل الصور من إنستجرام
+        if not formats and (ext in ['jpg', 'png', 'jpeg'] or '_type' in info and info['_type'] == 'playlist'):
+            await msg.edit_text("⏳ جاري تحميل الصور...")
+            ydl_opts = {'cookiefile': 'cookies.txt', 'outtmpl': 'downloads/%(id)s.%(ext)s'}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                res_info = ydl.extract_info(url, download=True)
+                if 'entries' in res_info:
+                    for entry in res_info['entries']:
+                        filename = ydl.prepare_filename(entry)
+                        if os.path.exists(filename):
+                            await client.send_photo(chat_id, photo=filename)
+                            os.remove(filename)
+                    await msg.delete()
+                else:
+                    filename = ydl.prepare_filename(res_info)
+                    if os.path.exists(filename):
+                        await client.send_photo(chat_id, photo=filename)
+                        os.remove(filename)
+                        await msg.delete()
+            return
+
+        # تجميع الجودات المتاحة ومساحاتها
+        available_res = {}
         target_resolutions = ['360p', '480p', '720p', '1080p']
         
+        if formats:
+            for f in formats:
+                height = f.get('height')
+                if height:
+                    res_str = f"{height}p"
+                    if res_str in target_resolutions and res_str not in available_res:
+                        filesize = f.get('filesize') or f.get('filesize_approx')
+                        size_mb = f"{round(filesize / (1024 * 1024), 1)} MB" if filesize else "غير معروف"
+                        available_res[res_str] = {
+                            'size': size_mb
+                        }
+        
+        # إنشاء الأزرار للـ 4 جودات المطلوبة دائماً
         keyboard = []
         for res in target_resolutions:
             if res in available_res:
+                # الجودة موجودة مباشرة وتعرض بمساحتها
                 text = f"{res} ({available_res[res]['size']})"
-                cb_data = f"dl_{res}_{url}"
-                keyboard.append([InlineKeyboardButton(text, callback_data=cb_data)])
+                keyboard.append([InlineKeyboardButton(text, callback_data=f"dl_{res}")])
             else:
-                keyboard.append([InlineKeyboardButton(text=f"{res} (توليد تلقائي ⚙️)", callback_data=f"gen_{res}_{url}")])
+                # الجودة مش موجودة، البوت سيعمل لها توليد تلقائي عند الضغط
+                keyboard.append([InlineKeyboardButton(text=f"{res} (توليد تلقائي ⚙️)", callback_data=f"gen_{res}")])
                 
-        await msg.edit_text(f"اختر الجودة المطلوبة للفيلم:\n**{title}**", reply_markup=InlineKeyboardMarkup(keyboard))
+        await msg.edit_text(f"🎬 **{title}**\n\nاختر الجودة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard))
+        
     except Exception as e:
-        await msg.edit_text(f"❌ حدث خطأ أثناء جلب البيانات: {str(e)}")
+        await msg.edit_text(f"❌ حدث خطأ أثناء فحص الرابط: {str(e)}")
 
-# معالجة الضغط على الأزرار والتحميل أو التحويل بـ ffmpeg
 @app.on_callback_query()
 async def download_callback(client, callback_query):
     data = callback_query.data
-    parts = data.split("_", 2)
+    chat_id = callback_query.message.chat.id
+    
+    url = user_urls.get(chat_id)
+    if not url:
+        await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة، أرسل الرابط مرة أخرى.")
+        return
+
+    parts = data.split("_")
     action = parts[0]
     res = parts[1]
-    url = parts[2]
-    
     target_height = res.replace("p", "")
     
     if action == "dl":
@@ -85,18 +124,13 @@ async def download_callback(client, callback_query):
             'format': f'bestvideo[height<={target_height}]+bestaudio/best[height<={target_height}]',
         }
     elif action == "gen":
-        await callback_query.message.edit_text(f"⚙️ الجودة غير متوفرة مباشرة، جاري تحميل أعلى جودة ومعالجتها لـ {res} عبر FFmpeg...")
+        await callback_query.message.edit_text(f"⚙️ الجودة غير متوفرة مباشرة، جاري معالجة الفيديو لـ {res} عبر FFmpeg...")
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(title)s.%(ext)s',
             'format': 'bestvideo+bestaudio/best',
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            }],
-            'postprocessor_args': [
-                '-vf', f'scale=-2:{target_height}'
-            ]
+            'postprocessors': [{'key': 'FFmpegVideoConvertor', 'preferedformat': 'mp4'}],
+            'postprocessor_args': ['-vf', f'scale=-2:{target_height}']
         }
 
     try:
@@ -105,12 +139,11 @@ async def download_callback(client, callback_query):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             
-        await callback_query.message.edit_text("📤 جاري رفع الفيلم إليك...")
-        await client.send_video(callback_query.message.chat.id, video=filename)
+        await callback_query.message.edit_text("📤 جاري رفع الملف إليك...")
+        await client.send_video(chat_id, video=filename)
         os.remove(filename)
     except Exception as e:
-        await callback_query.message.edit_text(f"❌ حدث خطأ أثناء المعالجة أو التحميل: {str(e)}")
+        await callback_query.message.edit_text(f"❌ حدث خطأ أثناء التحميل أو المعالجة: {str(e)}")
 
-# تشغيل البوت
 if __name__ == "__main__":
     app.run()
