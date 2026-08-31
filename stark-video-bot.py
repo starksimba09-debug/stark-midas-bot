@@ -16,7 +16,6 @@ app = Client(
     bot_token=BOT_TOKEN
 )
 
-# إعدادات instaloader
 L = instaloader.Instaloader(
     download_videos=False,
     download_video_thumbnails=False,
@@ -30,7 +29,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في البوت!\n\n"
         "• أرسل اسم أي شخصية لجلب صورها 🖼️\n"
-        "• أرسل رابط إنستجرام (صورة أو ريلز) أو فيسبوك للتحميل 📥"
+        "• أرسل رابط إنستجرام (حتى لو فيه 20 صورة) أو ريلز للتحميل 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -69,35 +68,33 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
+    msg = await message.reply_text("⏳ جاري سحب وتحميل الصور (قد يستغرق لحظات لو البوست كبير)...")
 
     try:
-        # 3. معالجة منشورات الصور في إنستجرام (/p/)
+        # 3. معالجة منشورات الصور في إنستجرام (/p/) ودعم أكثر من 10 صور بتسريحها على دفعات
         if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
             shortcode = text.split("/p/")[-1].split("/tv/")[-1].split("/")[0].split("?")[0]
             post = instaloader.Post.from_shortcode(L.context, shortcode)
             
-            # التحقق لو البوست فيه صور متعددة أو صورة واحدة
+            all_urls = []
             if post.mediacount > 1:
-                media_group = []
                 for node in post.get_sidecar_nodes():
-                    if node.is_video:
-                        continue
-                    media_group.append(InputMediaPhoto(media=node.display_url))
-                    if len(media_group) >= 10:  # أقصى حد تيليجرام
-                        break
-                if media_group:
-                    await client.send_media_group(chat_id, media=media_group)
-                    await msg.delete()
-                    return
+                    if not node.is_video:
+                        all_urls.append(node.display_url)
             else:
-                img_url = post.url
-                if img_url:
-                    await client.send_photo(chat_id, photo=img_url, caption="📥 تم تنزيل الصورة بنجاح!")
-                    await msg.delete()
-                    return
+                if post.url:
+                    all_urls.append(post.url)
+            
+            if all_urls:
+                await msg.delete()
+                # تقسيم الصور على دفعات كل دفعة 10 صور (لأن تيليجرام مش بيقبل أكتر من 10 في المرة)
+                for i in range(0, len(all_urls), 10):
+                    chunk = all_urls[i:i+10]
+                    media_group = [InputMediaPhoto(media=url) for url in chunk]
+                    await client.send_media_group(chat_id, media=media_group)
+                return
 
-        # 4. الريلز والفيديوهات (عبر yt-dlp باستخدام الكوكيز)
+        # 4. الريلز والفيديوهات
         os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
