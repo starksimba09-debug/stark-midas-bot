@@ -23,7 +23,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في بوت التحميل (Stark Video Bot)!\n\n"
         "• أرسل لي **اسم أي شخصية** وسأبحث لك عن صورها 🖼️\n"
-        "• أرسل لي **رابط (يوتيوب، انستجرام، فيسبوك، بينتريست)** وسأقوم بتحميله 📥"
+        "• أرسل لي **رابط (يوتيوب، انستجرام، فيسبوك)** وسأقوم بتحميله 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -31,7 +31,7 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. البحث عن الشخصيات والأسماء
+    # 1. البحث عن الصور بالأسماء
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري البحث عن صور لـ ({text})...")
         try:
@@ -55,7 +55,7 @@ async def handle_incoming_text(client, message):
             pass
         query = f"ytsearch1:{text} HD"
     else:
-        # 2. معالجة منشورات الصور الثابتة في إنستجرام (/p/) مباشرة
+        # 2. معالجة منشورات الصور في إنستجرام
         if "instagram.com" in text and ("/p/" in text or not "reel" in text):
             msg = await message.reply_text("⏳ جاري سحب الصورة من إنستجرام...")
             try:
@@ -76,7 +76,7 @@ async def handle_incoming_text(client, message):
         query = text
 
     user_queries[chat_id] = query
-    msg = await message.reply_text("🔍 جاري التحضير وجلب خيارات التحميل...")
+    msg = await message.reply_text("🔍 جاري التحضير وجلب الرابط...")
     
     try:
         ydl_opts = {'cookiefile': 'cookies.txt', 'quiet': True}
@@ -86,21 +86,20 @@ async def handle_incoming_text(client, message):
                 info = info['entries'][0]
             title = info.get('title', 'Media')
             
+        # زر فيديو فقط بدون أي أزرار صوت نهائياً
         keyboard = [
-            [InlineKeyboardButton("🎵 تحميل صوت (MP3)", callback_data="dl_audio")],
-            [InlineKeyboardButton("🎬 تحميل فيديو (MP4)", callback_data="dl_video")]
+            [InlineKeyboardButton("🎬 تحميل الفيديو (MP4)", callback_data="dl_video")]
         ]
         
         await msg.edit_text(
-            f"🎵 **تم العثور على النتيجة:**\n`{title}`\n\nاختر صيغة التحميل المطلوبة:",
+            f"🎬 **النتيجة:**\n`{title}`\n\nاضغط للتحميل:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الرابط:\n`{str(e)}`")
+        await msg.edit_text(f"❌ عذراً، لم أتمكن من معالجة هذا الطلب:\n`{str(e)}`")
 
 @app.on_callback_query()
-async def download_callback(client, callback_query):
-    data = callback_query.data
+async def download_cookie(client, callback_query):
     chat_id = callback_query.message.chat.id
     query = user_queries.get(chat_id)
     
@@ -108,14 +107,16 @@ async def download_callback(client, callback_query):
         await callback_query.message.edit_text("❌ انتهت صلاحية الجلسة.")
         return
 
-    await callback_query.message.edit_text("⏳ جاري التحميل...")
+    await callback_query.message.edit_text("⏳ جاري التحميل... اصبر قليلاً")
     
     try:
         os.makedirs("downloads", exist_ok=True)
+        # استخدام إعدادات تمنع مشاكل الصيغ المفقودة نهائياً
         ydl_opts = {
             'cookiefile': 'cookies.txt',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'format': 'bestaudio/best' if data == "dl_audio" else 'best[height<=720]/best'
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+            'format': 'best/bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4'
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -123,13 +124,15 @@ async def download_callback(client, callback_query):
             if 'entries' in res_info:
                 res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
+            # التأكد من امتداد mp4 لو حصل دمج
+            if not filename.endswith('.mp4'):
+                base, _ = os.path.splitext(filename)
+                if os.path.exists(base + '.mp4'):
+                    filename = base + '.mp4'
             
-        await callback_query.message.edit_text("📤 جاري الإرسال...")
+        await callback_query.message.edit_text("📤 جاري إرسال الفيديو...")
         
-        if data == "dl_audio":
-            await client.send_audio(chat_id, audio=filename)
-        else:
-            await client.send_video(chat_id, video=filename, supports_streaming=True)
+        await client.send_video(chat_id, video=filename, supports_streaming=True)
             
         if os.path.exists(filename):
             os.remove(filename)
