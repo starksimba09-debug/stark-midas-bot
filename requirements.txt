@@ -3,4 +3,3 @@ tgcrypto
 yt-dlp
 requests
 beautifulsoup4
-instaloader
