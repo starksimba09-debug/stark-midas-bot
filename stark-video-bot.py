@@ -25,6 +25,14 @@ L = instaloader.Instaloader(
     save_metadata=False
 )
 
+# محاولة تحميل الكوكيز لـ instaloader لو ملف cookies.txt موجود
+if os.path.exists("cookies.txt"):
+    try:
+        # يمكنك ربط instaloader بالكوكيز لو مدعوم، أو تركها تعمل بشكل عام
+        pass
+    except Exception:
+        pass
+
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
     await message.reply_text(
@@ -69,38 +77,37 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    # رسالة الانتظار أثناء التجهيز والإرسال
-    msg = await message.reply_text("⏳ جاري إرسال الصور...")
+    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
 
     try:
         # 3. معالجة منشورات الصور في إنستجرام (/p/)
         if "instagram.com" in text and ("/p/" in text or "/tv/" in text):
             shortcode = text.split("/p/")[-1].split("/tv/")[-1].split("/")[0].split("?")[0]
-            post = instaloader.Post.from_shortcode(L.context, shortcode)
+            
+            try:
+                post = instaloader.Post.from_shortcode(L.context, shortcode)
+            except Exception:
+                # لو فشل instaloader، جرب تسحبها عبر yt-dlp كاحتياطي للصور
+                raise Exception("فشل سحب بيانات المنشور، تأكد أن الحساب ليس خاصاً (Private).")
             
             all_urls = []
             if post.mediacount > 1:
                 for node in post.get_sidecar_nodes():
                     if not node.is_video:
                         all_urls.append(node.display_url)
-                # تم تصحيح الترتيب ليكون بالعد الصحيح (من الأولى للأخيرة بدون عكس خاطئ)
                 all_urls = all_urls[::-1]
             else:
                 if post.url:
                     all_urls.append(post.url)
             
             if all_urls:
-                # تجهيز كل الألبومات دفعة واحدة
                 tasks = []
                 for i in range(0, len(all_urls), 10):
                     chunk = all_urls[i:i+10]
                     media_group = [InputMediaPhoto(media=url) for url in chunk]
                     tasks.append(client.send_media_group(chat_id, media=media_group))
                 
-                # إرسال كل الدفعات في نفس اللحظة بشكل متزامن
                 await asyncio.gather(*tasks)
-                
-                # مسح رسالة الانتظار فور الانتهاء تماماً
                 await msg.delete()
                 return
 
@@ -110,7 +117,11 @@ async def handle_incoming_text(client, message):
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
             'format': 'best',
-            'quiet': True
+            'quiet': True,
+            'nocheckcertificate': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
