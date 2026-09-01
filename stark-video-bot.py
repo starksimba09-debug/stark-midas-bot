@@ -4,6 +4,7 @@ import yt_dlp
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
+import instaloader
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -14,6 +15,14 @@ app = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
+)
+
+L = instaloader.Instaloader(
+    download_videos=False,
+    download_video_thumbnails=False,
+    download_geotags=False,
+    download_comments=False,
+    save_metadata=False
 )
 
 @app.on_message(filters.command("start"))
@@ -29,7 +38,7 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. البحث عن الصور بالأسماء
+    # 1. البحث عن الصور بالأسماء (DuckDuckGo)
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري جلب الصور لـ ({text})...")
         try:
@@ -60,9 +69,37 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    msg = await message.reply_text("⏳ جاري المعالجة والإرسال...")
+    # رسالة الانتظار
+    msg = await message.reply_text("⏳ جاري تجهيز وإرسال المحتوى...")
 
     try:
+        # 3. معالجة منشورات الصور في إنستجرام (/p/) حصرياً عبر instaloader لكي لا تضرب خطأ yt-dlp
+        if "instagram.com" in text and "/p/" in text:
+            shortcode = text.split("/p/")[1].split("/")[0].split("?")[0]
+            post = instaloader.Post.from_shortcode(L.context, shortcode)
+            
+            all_urls = []
+            if post.mediacount > 1:
+                for node in post.get_sidecar_nodes():
+                    if not node.is_video:
+                        all_urls.append(node.display_url)
+                all_urls = all_urls[::-1]
+            else:
+                if post.url:
+                    all_urls.append(post.url)
+            
+            if all_urls:
+                tasks = []
+                for i in range(0, len(all_urls), 10):
+                    chunk = all_urls[i:i+10]
+                    media_group = [InputMediaPhoto(media=url) for url in chunk]
+                    tasks.append(client.send_media_group(chat_id, media=media_group))
+                
+                await asyncio.gather(*tasks)
+                await msg.delete()
+                return
+
+        # 4. الريلز والفيديوهات (عبر yt-dlp)
         os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
@@ -77,32 +114,11 @@ async def handle_incoming_text(client, message):
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             res_info = ydl.extract_info(text, download=True)
-            
-            # لو البوست فيه صور متعددة أو فيديو منفرد
             if 'entries' in res_info:
-                # لو ألبوم صور متعددة من yt-dlp
-                image_urls = []
-                for entry in res_info['entries']:
-                    if 'url' in entry:
-                        image_urls.append(entry['url'])
-                
-                if image_urls:
-                    await msg.delete()
-                    for i in range(0, len(image_urls), 10):
-                        chunk = image_urls[i:i+10]
-                        media_group = [InputMediaPhoto(media=u) for u in chunk]
-                        await client.send_media_group(chat_id, media=media_group)
-                    return
-                else:
-                    res_info = res_info['entries'][0]
-
+                res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
             
-        # التحقق مما إذا كان الملف منزلاً فيديو أو صورة
-        if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-            await client.send_photo(chat_id, photo=filename, caption="📥 تم تنزيل الصورة بنجاح!")
-        else:
-            await client.send_video(chat_id, video=filename, supports_streaming=True)
+        await client.send_video(chat_id, video=filename, supports_streaming=True)
             
         if os.path.exists(filename):
             os.remove(filename)
