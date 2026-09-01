@@ -2,7 +2,7 @@ import os
 import asyncio
 import yt_dlp
 from pyrogram import Client, filters
-from pyrogram.types import InputMediaPhoto
+from pyrogram.types import InputMediaPhoto, InputMediaVideo
 import requests
 import instaloader
 
@@ -18,7 +18,7 @@ app = Client(
 )
 
 L = instaloader.Instaloader(
-    download_videos=False,
+    download_videos=True,  # مسموح بتحميل الفيديوهات لو ظهرت جوه البوستات المختلطة
     download_video_thumbnails=False,
     download_geotags=False,
     download_comments=False,
@@ -30,7 +30,7 @@ async def start_command(client, message):
     await message.reply_text(
         "👋 أهلاً بك في البوت!\n\n"
         "• أرسل اسم أي شخصية لجلب صورها 🖼️\n"
-        "• أرسل رابط إنستجرام (صور أو ريلز) أو فيسبوك للتحميل 📥"
+        "• أرسل رابط إنستجرام أو بينترست أو فيسبوك للتحميل 📥"
     )
 
 @app.on_message(filters.text & ~filters.command("start"))
@@ -38,7 +38,7 @@ async def handle_incoming_text(client, message):
     text = message.text.strip()
     chat_id = message.chat.id
     
-    # 1. البحث عن الصور بالأسماء (DuckDuckGo)
+    # 1. البحث عن الصور بالأسماء
     if not text.startswith("http"):
         msg = await message.reply_text(f"🔍 جاري جلب الصور لـ ({text})...")
         try:
@@ -69,37 +69,52 @@ async def handle_incoming_text(client, message):
         await message.reply_text("❌ تم إلغاء دعم يوتيوب.")
         return
 
-    # رسالة الانتظار
     msg = await message.reply_text("⏳ جاري تجهيز وإرسال المحتوى...")
 
     try:
-        # 3. معالجة منشورات الصور في إنستجرام (/p/) حصرياً عبر instaloader لكي لا تضرب خطأ yt-dlp
+        # 3. معالجة منشورات إنستجرام (/p/) - سواء صور فقط أو مكسطة (صور وفيديوهات)
         if "instagram.com" in text and "/p/" in text:
             shortcode = text.split("/p/")[1].split("/")[0].split("?")[0]
             post = instaloader.Post.from_shortcode(L.context, shortcode)
             
-            all_urls = []
+            media_items = []
             if post.mediacount > 1:
                 for node in post.get_sidecar_nodes():
-                    if not node.is_video:
-                        all_urls.append(node.display_url)
-                all_urls = all_urls[::-1]
+                    if node.is_video:
+                        media_items.append({"type": "video", "url": node.video_url})
+                    else:
+                        media_items.append({"type": "photo", "url": node.display_url})
+                media_items = media_items[::-1]
             else:
-                if post.url:
-                    all_urls.append(post.url)
+                if post.is_video:
+                    media_items.append({"type": "video", "url": post.video_url})
+                else:
+                    media_items.append({"type": "photo", "url": post.url})
             
-            if all_urls:
-                tasks = []
-                for i in range(0, len(all_urls), 10):
-                    chunk = all_urls[i:i+10]
-                    media_group = [InputMediaPhoto(media=url) for url in chunk]
-                    tasks.append(client.send_media_group(chat_id, media=media_group))
-                
-                await asyncio.gather(*tasks)
+            if media_items:
                 await msg.delete()
+                # تقسيم العناصر وإرسالها
+                photos_group = []
+                for item in media_items:
+                    if item["type"] == "photo":
+                        photos_group.append(InputMediaPhoto(media=item["url"]))
+                        if len(photos_group) == 10:
+                            await client.send_media_group(chat_id, media=photos_group)
+                            photos_group = []
+                    else:
+                        # لو فيه صور متراكمة قبل الفيديو، ابعتها الأول
+                        if photos_group:
+                            await client.send_media_group(chat_id, media=photos_group)
+                            photos_group = []
+                        # إرسال الفيديو المدمج في البوست مباشرة
+                        await client.send_video(chat_id, video=item["url"], supports_streaming=True)
+                
+                # لو فضل صور أخيرًا متبقية
+                if photos_group:
+                    await client.send_media_group(chat_id, media=photos_group)
                 return
 
-        # 4. الريلز والفيديوهات (عبر yt-dlp)
+        # 4. الريلز، فيديوهات وبوستات فيسبوك/بينترست (عبر yt-dlp)
         os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
@@ -115,10 +130,23 @@ async def handle_incoming_text(client, message):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             res_info = ydl.extract_info(text, download=True)
             if 'entries' in res_info:
+                # لو بينتستر أو رابط فيه صور متعددة عبر yt-dlp
+                image_urls = [e.get('url') for e in res_info['entries'] if e.get('url')]
+                if image_urls:
+                    await msg.delete()
+                    for i in range(0, len(image_urls), 10):
+                        chunk = image_urls[i:i+10]
+                        media_group = [InputMediaPhoto(media=u) for u in chunk]
+                        await client.send_media_group(chat_id, media=media_group)
+                    return
                 res_info = res_info['entries'][0]
+
             filename = ydl.prepare_filename(res_info)
             
-        await client.send_video(chat_id, video=filename, supports_streaming=True)
+        if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            await client.send_photo(chat_id, photo=filename, caption="📥 تم تنزيل الصورة بنجاح!")
+        else:
+            await client.send_video(chat_id, video=filename, supports_streaming=True)
             
         if os.path.exists(filename):
             os.remove(filename)
