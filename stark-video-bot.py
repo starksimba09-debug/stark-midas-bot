@@ -5,8 +5,7 @@ from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
 import instaloader
-from bs4 import BeautifulSoup
-from PIL import Image  # ضروري لمعالجة وتحويل الصور لصيغة مقبولة تماماً
+from PIL import Image
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -76,51 +75,41 @@ async def handle_incoming_text(client, message):
     try:
         os.makedirs("downloads", exist_ok=True)
 
-        # 3. معالجة روابط بينترست (Pinterest / pin.it) مع التحويل الإلزامي لـ JPG عبر Pillow
+        # 3. معالجة روابط بينترست (Pinterest / pin.it) باستخدام yt_dlp
         if "pinterest.com" in text or "pin.it" in text:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ydl_opts = {
+                'outtmpl': 'downloads/%(id)s.%(ext)s',
+                'quiet': True,
+                'nocheckcertificate': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                }
             }
-            response = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            img_tag = soup.find('meta', property='og:image')
-            video_tag = soup.find('meta', property='og:video')
-            
-            file_path = None
-            if video_tag and video_tag.get('content'):
-                v_url = video_tag['content']
-                v_data = requests.get(v_url, headers=headers).content
-                file_path = "downloads/pinterest_video.mp4"
-                with open(file_path, "wb") as f:
-                    f.write(v_data)
-                
-                await client.send_video(chat_id, video=file_path, supports_streaming=True)
-            elif img_tag and img_tag.get('content'):
-                img_url = img_tag['content']
-                img_url = img_url.replace('/236x/', '/originals/').replace('/474x/', '/originals/').replace('/736x/', '/originals/')
-                
-                # تحميل بيانات الصورة الأصلية
-                img_response = requests.get(img_url, headers=headers)
-                temp_raw_path = "downloads/temp_pinterest.jpg"
-                with open(temp_raw_path, "wb") as f:
-                    f.write(img_response.content)
-                
-                # معالجة وتحويل الصورة باستخدام Pillow لضمان صيغة JPG سليمة 100% لتليجرام
-                file_path = "downloads/pinterest_fixed.jpg"
-                with Image.open(temp_raw_path) as img:
-                    # تحويل لوضع RGB لو الصورة بصيغة RGBA أو Palette عشان متضربش إيرور
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                res_info = ydl.extract_info(text, download=True)
+                if 'entries' in res_info:
+                    res_info = res_info['entries'][0]
+                filename = ydl.prepare_filename(res_info)
+
+            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                fixed_path = "downloads/pinterest_fixed.jpg"
+                with Image.open(filename) as img:
                     if img.mode in ("RGBA", "P"):
                         img = img.convert("RGB")
-                    img.save(file_path, "JPEG", quality=95)
+                    img.save(fixed_path, "JPEG", quality=95)
                 
-                if os.path.exists(temp_raw_path):
-                    os.remove(temp_raw_path)
+                if os.path.exists(filename):
+                    os.remove(filename)
                 
-                await client.send_photo(chat_id, photo=file_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
-            
-            if file_path and os.path.exists(file_path):
-                os.remove(file_path)
+                await client.send_photo(chat_id, photo=fixed_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
+                if os.path.exists(fixed_path):
+                    os.remove(fixed_path)
+            else:
+                await client.send_video(chat_id, video=filename, supports_streaming=True)
+                if os.path.exists(filename):
+                    os.remove(filename)
+
             await msg.delete()
             return
 
