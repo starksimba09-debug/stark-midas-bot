@@ -5,7 +5,6 @@ from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
 import instaloader
-from PIL import Image
 import re
 
 API_ID = 37361961
@@ -76,7 +75,7 @@ async def handle_incoming_text(client, message):
     try:
         os.makedirs("downloads", exist_ok=True)
 
-        # 3. معالجة روابط بينترست (Pinterest / pin.it) باستخراج روابط الـ CDN مباشرة
+        # 3. معالجة روابط بينترست (Pinterest / pin.it) بأمان تتام
         if "pinterest.com" in text or "pin.it" in text:
             headers = {
                 "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
@@ -84,35 +83,52 @@ async def handle_incoming_text(client, message):
             session = requests.Session()
             resp = session.get(text, headers=headers, allow_redirects=True, timeout=15)
             
-            # البحث عن روابط الصور المباشرة داخل الصفحة
+            # استخراج جميع روابط الصور المتاحة في الصفحة
             img_matches = re.findall(r'https://i\.pinimg\.com/originals/[a-f0-9/._-]+', resp.text)
-            
             if not img_matches:
                 img_matches = re.findall(r'https://i\.pinimg\.com/[a-f0-9x/._-]+', resp.text)
                 img_matches = [url for url in img_matches if url.endswith(('.jpg', '.png', '.jpeg'))]
 
+            file_path = None
             if img_matches:
-                best_img_url = img_matches[0]
-                best_img_url = best_img_url.replace('/236x/', '/originals/').replace('/474x/', '/originals/').replace('/736x/', '/originals/')
-                
-                img_data = session.get(best_img_url, headers=headers).content
-                file_path = "downloads/pinterest_final.jpg"
-                
-                with open(file_path, "wb") as f:
-                    f.write(img_data)
-                
-                # المعالجة بـ Pillow لضمان توافق الصورة بنسبة 100% مع تيليجرام
-                with Image.open(file_path) as img:
-                    if img.mode in ("RGBA", "P"):
-                        img = img.convert("RGB")
-                    img.save(file_path, "JPEG", quality=95)
-                
-                await client.send_photo(chat_id, photo=file_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            else:
-                raise Exception("فشل استخراج رابط الصورة من بينترست، قد تكون الصفحة تحوي فيديو أو تتطلب تسجيل دخول.")
+                # تجربة الروابط المستخرجة واحد بواحد حتى نجد رابطاً يعمل بنجاح
+                for best_img_url in img_matches[:3]:
+                    best_img_url = best_img_url.replace('/236x/', '/originals/').replace('/474x/', '/originals/').replace('/736x/', '/originals/')
+                    try:
+                        img_response = session.get(best_img_url, headers=headers, timeout=10)
+                        if img_response.status_code == 200 and len(img_response.content) > 5000: # التأكد أنها صورة فعلية وليست ملف فارغ
+                            file_path = "downloads/pinterest_image.jpg"
+                            with open(file_path, "wb") as f:
+                                f.write(img_response.content)
+                            break
+                    except Exception:
+                        continue
             
+            if file_path and os.path.exists(file_path):
+                await client.send_photo(chat_id, photo=file_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
+                os.remove(file_path)
+            else:
+                # خطة بديلة: استخدام yt_dlp لو الـ Regex ملقاش الصورة
+                ydl_opts = {
+                    'outtmpl': 'downloads/%(id)s.%(ext)s',
+                    'quiet': True,
+                    'nocheckcertificate': True,
+                    'http_headers': headers
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    res_info = ydl.extract_info(text, download=True)
+                    if 'entries' in res_info:
+                        res_info = res_info['entries'][0]
+                    filename = ydl.prepare_filename(res_info)
+                
+                if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    await client.send_photo(chat_id, photo=filename, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
+                else:
+                    await client.send_video(chat_id, video=filename, supports_streaming=True)
+                
+                if os.path.exists(filename):
+                    os.remove(filename)
+
             await msg.delete()
             return
 
