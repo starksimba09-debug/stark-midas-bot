@@ -5,7 +5,7 @@ from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
 import instaloader
-from bs4 import BeautifulSoup  # تأكد من إضافتها أو استخدام regex لو مش عايز مكتبة زيادة
+from bs4 import BeautifulSoup
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -73,33 +73,43 @@ async def handle_incoming_text(client, message):
     msg = await message.reply_text("⏳ جاري تجهيز وإرسال المحتوى...")
 
     try:
-        # 3. معالجة خاصة لروابط بينترست (Pinterest / pin.it)
+        os.makedirs("downloads", exist_ok=True)
+
+        # 3. معالجة روابط بينترست (Pinterest / pin.it) بتحميلها محلياً ثم إرسالها
         if "pinterest.com" in text or "pin.it" in text:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
-            # جلب محتوى الصفحة واستخراج رابط الصورة الأساسي (Open Graph Image)
             response = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
             soup = BeautifulSoup(response.text, 'html.parser')
             
             img_tag = soup.find('meta', property='og:image')
             video_tag = soup.find('meta', property='og:video')
             
+            file_path = None
             if video_tag and video_tag.get('content'):
-                # لو بينترست عبارة عن فيديو
-                video_url = video_tag['content']
-                await client.send_video(chat_id, video=video_url, supports_streaming=True)
-                await msg.delete()
-                return
+                v_url = video_tag['content']
+                v_data = requests.get(v_url, headers=headers).content
+                file_path = "downloads/pinterest_video.mp4"
+                with open(file_path, "wb") as f:
+                    f.write(v_data)
+                
+                await client.send_video(chat_id, video=file_path, supports_streaming=True)
             elif img_tag and img_tag.get('content'):
-                # لو بينترست عبارة عن صورة (نقدر نحول جودة الصورة لـ Originals عشان تنزل بأعلى جودة)
                 img_url = img_tag['content']
-                # بينترست غالباً بيحط جودة متوسطة، نقدر نستبدل الـ p/236x أو 474x بـ originals لو أمكن، أو نبعتها مباشرة
                 img_url = img_url.replace('/236x/', '/originals/').replace('/474x/', '/originals/').replace('/736x/', '/originals/')
                 
-                await client.send_photo(chat_id, photo=img_url, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
-                await msg.delete()
-                return
+                img_data = requests.get(img_url, headers=headers).content
+                file_path = "downloads/pinterest_image.jpg"
+                with open(file_path, "wb") as f:
+                    f.write(img_data)
+                
+                await client.send_photo(chat_id, photo=file_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
+            
+            if file_path and os.path.exists(file_path):
+                os.remove(file_path)
+            await msg.delete()
+            return
 
         # 4. معالجة منشورات إنستجرام المختلطة أو الصور (/p/)
         if "instagram.com" in text and "/p/" in text:
@@ -140,7 +150,6 @@ async def handle_incoming_text(client, message):
                 return
 
         # 5. الريلز وفيديوهات فيسبوك (عبر yt-dlp)
-        os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
