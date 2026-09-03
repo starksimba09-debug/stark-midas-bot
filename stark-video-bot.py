@@ -5,7 +5,7 @@ from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto
 import requests
 import instaloader
-from PIL import Image
+from bs4 import BeautifulSoup  # تأكد من إضافتها أو استخدام regex لو مش عايز مكتبة زيادة
 
 API_ID = 37361961
 API_HASH = "36eca100c1861a8dc32ccec4fd284c24"
@@ -73,45 +73,33 @@ async def handle_incoming_text(client, message):
     msg = await message.reply_text("⏳ جاري تجهيز وإرسال المحتوى...")
 
     try:
-        os.makedirs("downloads", exist_ok=True)
-
-        # 3. معالجة روابط بينترست (Pinterest / pin.it) باستخدام yt_dlp
+        # 3. معالجة خاصة لروابط بينترست (Pinterest / pin.it)
         if "pinterest.com" in text or "pin.it" in text:
-            ydl_opts = {
-                'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'quiet': True,
-                'nocheckcertificate': True,
-                'http_headers': {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                res_info = ydl.extract_info(text, download=True)
-                if 'entries' in res_info:
-                    res_info = res_info['entries'][0]
-                filename = ydl.prepare_filename(res_info)
-
-            if filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                fixed_path = "downloads/pinterest_fixed.jpg"
-                with Image.open(filename) as img:
-                    if img.mode in ("RGBA", "P"):
-                        img = img.convert("RGB")
-                    img.save(fixed_path, "JPEG", quality=95)
+            # جلب محتوى الصفحة واستخراج رابط الصورة الأساسي (Open Graph Image)
+            response = requests.get(text, headers=headers, allow_redirects=True, timeout=10)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            img_tag = soup.find('meta', property='og:image')
+            video_tag = soup.find('meta', property='og:video')
+            
+            if video_tag and video_tag.get('content'):
+                # لو بينترست عبارة عن فيديو
+                video_url = video_tag['content']
+                await client.send_video(chat_id, video=video_url, supports_streaming=True)
+                await msg.delete()
+                return
+            elif img_tag and img_tag.get('content'):
+                # لو بينترست عبارة عن صورة (نقدر نحول جودة الصورة لـ Originals عشان تنزل بأعلى جودة)
+                img_url = img_tag['content']
+                # بينترست غالباً بيحط جودة متوسطة، نقدر نستبدل الـ p/236x أو 474x بـ originals لو أمكن، أو نبعتها مباشرة
+                img_url = img_url.replace('/236x/', '/originals/').replace('/474x/', '/originals/').replace('/736x/', '/originals/')
                 
-                if os.path.exists(filename):
-                    os.remove(filename)
-                
-                await client.send_photo(chat_id, photo=fixed_path, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
-                if os.path.exists(fixed_path):
-                    os.remove(fixed_path)
-            else:
-                await client.send_video(chat_id, video=filename, supports_streaming=True)
-                if os.path.exists(filename):
-                    os.remove(filename)
-
-            await msg.delete()
-            return
+                await client.send_photo(chat_id, photo=img_url, caption="📌 تم تنزيل الصورة من Pinterest بنجاح!")
+                await msg.delete()
+                return
 
         # 4. معالجة منشورات إنستجرام المختلطة أو الصور (/p/)
         if "instagram.com" in text and "/p/" in text:
@@ -152,6 +140,7 @@ async def handle_incoming_text(client, message):
                 return
 
         # 5. الريلز وفيديوهات فيسبوك (عبر yt-dlp)
+        os.makedirs("downloads", exist_ok=True)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
