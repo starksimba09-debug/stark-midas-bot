@@ -4,3 +4,4 @@ yt-dlp
 requests
 instaloader
 beautifulsoup4
+Pillow
