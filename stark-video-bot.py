@@ -78,8 +78,7 @@ async def handle_incoming_text(client, message):
                         continue
             
             if file_path and os.path.exists(file_path):
-                # إرسال الصورة بدون أي أزرار أو إضافات
-                await client.send_photo(chat_id, photo=file_path)
+                await client.send_photo(chat_id, photo=file_path, reply_markup=None)
                 os.remove(file_path)
             else:
                 raise Exception("فشل العثور على رابط صورة صالح داخل بينترست.")
@@ -119,13 +118,13 @@ async def handle_incoming_text(client, message):
                         if photos_group:
                             await client.send_media_group(chat_id, media=photos_group)
                             photos_group = []
-                        await client.send_video(chat_id, video=item["url"], supports_streaming=True)
+                        await client.send_video(chat_id, video=item["url"], supports_streaming=True, reply_markup=None)
                 
                 if photos_group:
                     await client.send_media_group(chat_id, media=photos_group)
                 return
 
-        # 3. فيسبوك وباقي الفيديوهات
+        # 3. فيسبوك وباقي الفيديوهات (باستخدام yt_dlp وتصفية أي أزرار أو كابتشن خارجي)
         ydl_opts = {
             'cookiefile': 'cookies.txt',
             'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -143,7 +142,8 @@ async def handle_incoming_text(client, message):
                 res_info = res_info['entries'][0]
             filename = ydl.prepare_filename(res_info)
             
-        await client.send_video(chat_id, video=filename, supports_streaming=True)
+        # إرسال الفيديو صافياً بدون أي كابتشن أو أزرار تفاعلية نهائياً
+        await client.send_video(chat_id, video=filename, supports_streaming=True, caption="", reply_markup=None)
             
         if os.path.exists(filename):
             os.remove(filename)
